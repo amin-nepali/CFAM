@@ -35,9 +35,12 @@ service cloud.firestore {
     match /conversations/{conversationId} {
       allow read: if memberOf(conversationId);
       allow create: if signedIn()
-        && request.auth.uid in request.resource.data.memberIds;
+        && request.auth.uid in request.resource.data.memberIds
+        && request.resource.data.memberIds.size() >= 2
+        && request.resource.data.memberIds.size() <= 10;
       allow update: if memberOf(conversationId)
-        && request.auth.uid in request.resource.data.memberIds;
+        && request.auth.uid in request.resource.data.memberIds
+        && request.resource.data.memberIds == resource.data.memberIds;
       allow delete: if false;
     }
 
