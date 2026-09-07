@@ -14,10 +14,14 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends Activity {
     private static final String CFAM_URL = "https://cfam-call-family.vercel.app/";
+    private static final int MEDIA_PERMISSION_REQUEST = 42;
     private WebView webView;
+    private PermissionRequest pendingPermissionRequest;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -37,10 +41,7 @@ public class MainActivity extends Activity {
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
-                runOnUiThread(() -> request.grant(new String[] {
-                        PermissionRequest.RESOURCE_AUDIO_CAPTURE,
-                        PermissionRequest.RESOURCE_VIDEO_CAPTURE
-                }));
+                runOnUiThread(() -> handleWebViewPermissionRequest(request));
             }
         });
 
@@ -57,15 +58,66 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
 
         setContentView(webView);
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M
-                && (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
-                || checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)) {
-            requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA }, 42);
-        }
         if (savedInstanceState == null) {
             webView.loadUrl(CFAM_URL);
         } else {
             webView.restoreState(savedInstanceState);
+        }
+    }
+
+    private void handleWebViewPermissionRequest(PermissionRequest request) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M) {
+            request.grant(request.getResources());
+            return;
+        }
+
+        List<String> requiredPermissions = new ArrayList<>();
+        for (String resource : request.getResources()) {
+            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)
+                    && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                requiredPermissions.add(Manifest.permission.RECORD_AUDIO);
+            }
+            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)
+                    && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                requiredPermissions.add(Manifest.permission.CAMERA);
+            }
+        }
+
+        if (!requiredPermissions.isEmpty()) {
+            pendingPermissionRequest = request;
+            requestPermissions(requiredPermissions.toArray(new String[0]), MEDIA_PERMISSION_REQUEST);
+            return;
+        }
+
+        grantRequestedMedia(request);
+    }
+
+    private void grantRequestedMedia(PermissionRequest request) {
+        List<String> grantedResources = new ArrayList<>();
+        for (String resource : request.getResources()) {
+            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)
+                    && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                grantedResources.add(resource);
+            }
+            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)
+                    && checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                grantedResources.add(resource);
+            }
+        }
+        if (!grantedResources.isEmpty()) {
+            request.grant(grantedResources.toArray(new String[0]));
+        } else {
+            request.deny();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == MEDIA_PERMISSION_REQUEST && pendingPermissionRequest != null) {
+            PermissionRequest request = pendingPermissionRequest;
+            pendingPermissionRequest = null;
+            grantRequestedMedia(request);
         }
     }
 
