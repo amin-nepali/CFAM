@@ -38,6 +38,7 @@ import './profile-image.css'
 import './search.css'
 import './data-status.css'
 import './sections.css'
+import './verification.css'
 import { auth, db } from './lib/firebase'
 
 type Conversation = {
@@ -260,9 +261,27 @@ function AuthScreen() {
   return <main className="auth-shell"><div className="auth-art"><div className="brand-mark">C</div><p className="auth-kicker">CALL FAMILY</p><h1>Keep your people<br /><em>close.</em></h1><p>Private conversations, shared moments, and the people who matter most.</p><div className="auth-orbit"><span>✦</span><span>♡</span><span>✦</span></div></div><form className="auth-card" onSubmit={submit}><p className="eyebrow">{mode === 'login' ? 'Welcome back' : 'Join the family'}</p><h2>{mode === 'login' ? 'Sign in to CFAM' : 'Create your account'}</h2><p className="auth-subtitle">{mode === 'login' ? 'Your conversations are waiting for you.' : 'A few details, then you are ready to connect.'}</p>{mode === 'signup' && <div className="form-grid"><label>First name<input required value={firstName} onChange={(event) => setFirstName(event.target.value)} /></label><label>Last name<input required value={lastName} onChange={(event) => setLastName(event.target.value)} /></label></div>}{mode === 'signup' && <div className="form-grid"><label>Username<input required pattern="[A-Za-z0-9._-]+" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="alex.rivera" /></label><label>Age<input required min="13" max="120" type="number" value={age} onChange={(event) => setAge(event.target.value)} /></label></div>}<label>Email address<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label><label>Password<input required minLength={6} type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>{error && <p className="auth-error">{error}</p>}<button className="auth-submit" disabled={busy}>{busy ? 'Please wait...' : mode === 'login' ? 'Sign in' : 'Create account'} <ArrowLeft size={17} /></button><p className="auth-switch">{mode === 'login' ? 'New to CFAM?' : 'Already have an account?'} <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError('') }}>{mode === 'login' ? 'Create an account' : 'Sign in'}</button></p></form></main>
 }
 
-function VerificationScreen({ user }: { user: User }) {
+function VerificationScreen({ user, onVerified }: { user: User; onVerified: (user: User) => Promise<void> }) {
   const [sent, setSent] = useState(false)
-  return <main className="auth-shell"><div className="auth-art"><div className="brand-mark">C</div><p className="auth-kicker">ONE MORE STEP</p><h1>Check your<br /><em>inbox.</em></h1><p>CFAM sent a verification link to {user.email}. Verify it to keep your account secure.</p></div><div className="auth-card"><p className="eyebrow">Email verification</p><h2>Verify your email</h2><p className="auth-subtitle">After verifying, return here and refresh this page to enter CFAM.</p><button className="auth-submit" onClick={() => { void sendEmailVerification(user); setSent(true) }}>{sent ? 'Verification email sent' : 'Resend verification email'} <ArrowLeft size={17} /></button><button className="auth-switch" onClick={() => void signOut(auth)}>Sign out</button></div></main>
+  const [checking, setChecking] = useState(false)
+  const [error, setError] = useState('')
+  const goToDashboard = async () => {
+    setChecking(true)
+    setError('')
+    try {
+      await user.reload()
+      if (!user.emailVerified) {
+        setError('Your email is not verified yet. Open the link in your inbox, then try again.')
+        return
+      }
+      await onVerified(user)
+    } catch (checkError) {
+      setError(checkError instanceof Error ? checkError.message.replace('Firebase: ', '') : 'Unable to check verification status.')
+    } finally {
+      setChecking(false)
+    }
+  }
+  return <main className="auth-shell"><div className="auth-art"><div className="brand-mark">C</div><p className="auth-kicker">ONE MORE STEP</p><h1>Check your<br /><em>inbox.</em></h1><p>CFAM sent a verification link to {user.email}. Verify it to keep your account secure.</p></div><div className="auth-card"><p className="eyebrow">Email verification</p><h2>Verify your email</h2><p className="auth-subtitle">After you click the link, come back here and continue to your dashboard.</p>{error && <p className="auth-error">{error}</p>}<button className="auth-submit" disabled={checking} onClick={() => void goToDashboard()}>{checking ? 'Checking verification...' : 'Go to dashboard'} <ArrowLeft size={17} /></button><button className="auth-secondary" onClick={() => { void sendEmailVerification(user); setSent(true) }}>{sent ? 'Verification email sent' : 'Resend verification email'}</button><button className="auth-switch" onClick={() => void signOut(auth)}>Sign out</button></div></main>
 }
 
 function ProfileSetupScreen({ user, onSaved }: { user: User; onSaved: (profile: UserProfile) => void }) {
@@ -291,10 +310,17 @@ function App() {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [, setAuthRefresh] = useState(0)
   useEffect(() => onAuthStateChanged(auth, async (nextUser) => { setUser(nextUser); if (nextUser) { const profileSnapshot = await getDoc(doc(db, 'users', nextUser.uid)); setProfile(profileSnapshot.exists() ? profileSnapshot.data() as UserProfile : null) } else setProfile(null); setLoading(false) }), [])
+  const continueAfterVerification = async (verifiedUser: User) => {
+    setUser(verifiedUser)
+    const profileSnapshot = await getDoc(doc(db, 'users', verifiedUser.uid))
+    setProfile(profileSnapshot.exists() ? profileSnapshot.data() as UserProfile : null)
+    setAuthRefresh((current) => current + 1)
+  }
   if (loading) return <main className="auth-loading"><div className="brand-mark">C</div><p>Opening CFAM...</p></main>
   if (!user) return <AuthScreen />
-  if (!user.emailVerified) return <VerificationScreen user={user} />
+  if (!user.emailVerified) return <VerificationScreen user={user} onVerified={continueAfterVerification} />
   if (!profile) return <ProfileSetupScreen user={user} onSaved={setProfile} />
   return <Workspace user={user} profile={profile} />
 }
