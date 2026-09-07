@@ -1316,7 +1316,7 @@ function AuthScreen({
                 Username
                 <input
                   required
-                  pattern="[A-Za-z0-9._-]+"
+                  pattern="[A-Za-z0-9._\\-]+"
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
                   placeholder="alex.rivera"
@@ -1656,7 +1656,7 @@ function ProfileSetupScreen({
             Username
             <input
               required
-              pattern="[A-Za-z0-9._-]+"
+              pattern="[A-Za-z0-9._\\-]+"
               value={username}
               onChange={(event) => setUsername(event.target.value)}
               placeholder="alex.rivera"
