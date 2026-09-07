@@ -483,6 +483,13 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
     void remoteAudio.current.play().catch(() => undefined);
   };
 
+  const playRemoteVideo = () => {
+    if (!remoteVideo.current || !remoteStream.current) return;
+    remoteVideo.current.srcObject = remoteStream.current;
+    remoteVideo.current.muted = true;
+    void remoteVideo.current.play().catch(() => undefined);
+  };
+
   const recordCall = async (callDocumentId: string, duration: number) => {
     const callReference = doc(db, "calls", callDocumentId);
     let shouldRecord = false;
@@ -538,14 +545,16 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
     setMediaReady((current) => current + 1);
     if (localVideo.current) localVideo.current.srcObject = stream;
     remoteStream.current = new MediaStream();
-    if (remoteVideo.current) remoteVideo.current.srcObject = remoteStream.current;
+    playRemoteVideo();
     playRemoteAudio();
     const connection = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
     peerConnection.current = connection;
     stream.getTracks().forEach((track) => connection.addTrack(track, stream));
     connection.ontrack = (event) => {
-      event.streams[0]?.getTracks().forEach((track) => remoteStream.current?.addTrack(track));
-      if (remoteVideo.current && remoteStream.current) remoteVideo.current.srcObject = remoteStream.current;
+      if (remoteStream.current && !remoteStream.current.getTracks().some((track) => track.id === event.track.id)) {
+        remoteStream.current.addTrack(event.track);
+      }
+      playRemoteVideo();
       playRemoteAudio();
     };
     connection.onicecandidate = (event) => {
@@ -655,7 +664,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
 
   useEffect(() => {
     if (localVideo.current && localStream.current) localVideo.current.srcObject = localStream.current;
-    if (remoteVideo.current && remoteStream.current) remoteVideo.current.srcObject = remoteStream.current;
+    playRemoteVideo();
     playRemoteAudio();
   }, [callMode, mediaReady]);
 
@@ -1165,7 +1174,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
         <div className="call-overlay">
           <div className="call-background">
             <audio ref={remoteAudio} autoPlay />
-            {callMode === "video" && <video ref={remoteVideo} className="call-remote-video" autoPlay playsInline />}
+            {callMode === "video" && <video ref={remoteVideo} className="call-remote-video" autoPlay muted playsInline onLoadedMetadata={playRemoteVideo} />}
             <div className="call-topbar">
               <span className="call-secure">
                 <Check size={15} /> Encrypted call
