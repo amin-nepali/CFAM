@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { User } from 'firebase/auth'
-import { createUserWithEmailAndPassword, onAuthStateChanged, sendEmailVerification, signInWithEmailAndPassword, signOut } from 'firebase/auth'
+import type { ConfirmationResult, User } from 'firebase/auth'
+import { RecaptchaVerifier, createUserWithEmailAndPassword, linkWithPhoneNumber, onAuthStateChanged, sendEmailVerification, signInWithEmailAndPassword, signOut } from 'firebase/auth'
 import type { FormEvent } from 'react'
 import { addDoc, arrayRemove, arrayUnion, collection, doc, getDoc, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore'
 import {
@@ -234,31 +234,66 @@ function ProfileModal({ profile, userId, onClose, onSaved }: { profile: UserProf
   return <div className="modal-backdrop" onClick={onClose}><div className="profile-modal" onClick={(event) => event.stopPropagation()}><div className="modal-heading"><div><p className="eyebrow">Your profile</p><h2>{profile.firstName} {profile.lastName}</h2></div><button className="icon-button" onClick={onClose} aria-label="Close profile"><X size={19} /></button></div><div className="profile-upload"><div className="profile-photo"><Avatar initials={`${profile.firstName[0]}${profile.lastName[0]}`} color="plum" size="large" photoUrl={photoUrl} /><button onClick={() => imageInput.current?.click()} aria-label="Change profile image"><Camera size={16} /></button><input ref={imageInput} type="file" accept="image/*" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void compressImage(file).then(setPhotoUrl); event.currentTarget.value = '' }} /></div><div><strong>Profile image</strong><p>Choose a new image, then save your profile.</p></div></div>{error && <p className="auth-error">{error}</p>}<label>Username<input readOnly value={profile.username} /></label><div className="form-grid"><label>First name<input readOnly value={profile.firstName} /></label><label>Last name<input readOnly value={profile.lastName} /></label></div><label>Age<input readOnly value={profile.age} type="number" /></label><button className="save-profile" disabled={busy} onClick={() => void save()}><Check size={17} /> {busy ? 'Saving...' : 'Save profile'}</button></div></div>
 }
 
-function AuthScreen() {
+function AuthScreen({ onSignupFlowChange, onSignupComplete }: { onSignupFlowChange: (active: boolean) => void; onSignupComplete: () => Promise<void> }) {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
+  const [signupStep, setSignupStep] = useState<'details' | 'phone'>('details')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [username, setUsername] = useState('')
   const [age, setAge] = useState('')
+  const [phone, setPhone] = useState('')
+  const [code, setCode] = useState('')
+  const [confirmation, setConfirmation] = useState<ConfirmationResult | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const recaptcha = useRef<RecaptchaVerifier | null>(null)
+
+  const resetRecaptcha = () => {
+    recaptcha.current?.clear()
+    recaptcha.current = null
+  }
+
+  useEffect(() => () => resetRecaptcha(), [])
+
+  const createPhoneChallenge = async () => {
+    const normalizedPhone = phone.trim().replace(/[\s()-]/g, '')
+    if (!/^\+\d{10,15}$/.test(normalizedPhone)) {
+      setError('Enter your phone number in international format, for example +9779812345678.')
+      return
+    }
+    const credential = auth.currentUser
+    if (!credential) throw new Error('Your signup session expired. Please start again.')
+    if (!recaptcha.current) recaptcha.current = new RecaptchaVerifier(auth, 'phone-recaptcha', { size: 'normal' })
+    const result = await linkWithPhoneNumber(credential, normalizedPhone, recaptcha.current)
+    setConfirmation(result)
+    setSignupStep('phone')
+  }
+
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setError(''); setBusy(true)
     try {
       if (mode === 'login') await signInWithEmailAndPassword(auth, email, password)
-      else {
+      else if (signupStep === 'details') {
+        onSignupFlowChange(true)
         const credential = await createUserWithEmailAndPassword(auth, email, password)
+        await createPhoneChallenge()
+        void credential
+      } else if (!confirmation) throw new Error('Request a verification code first.')
+      else {
+        await confirmation.confirm(code.trim())
         const normalized = username.trim().toLowerCase()
-        await setDoc(doc(db, 'users', credential.user.uid), { username: normalized, usernameLower: normalized, firstName: firstName.trim(), lastName: lastName.trim(), age: Number(age), emailVerified: false, createdAt: serverTimestamp() })
-        await setDoc(doc(db, 'usernames', normalized), { uid: credential.user.uid })
-        await sendEmailVerification(credential.user)
+        await setDoc(doc(db, 'users', auth.currentUser?.uid ?? ''), { username: normalized, usernameLower: normalized, firstName: firstName.trim(), lastName: lastName.trim(), age: Number(age), phoneNumber: phone.trim(), emailVerified: false, phoneVerified: true, createdAt: serverTimestamp() })
+        await setDoc(doc(db, 'usernames', normalized), { uid: auth.currentUser?.uid })
+        if (auth.currentUser) await sendEmailVerification(auth.currentUser)
+        await onSignupComplete()
       }
     } catch (submissionError) { setError(submissionError instanceof Error ? submissionError.message.replace('Firebase: ', '') : 'Unable to continue.') }
     finally { setBusy(false) }
   }
-  return <main className="auth-shell"><div className="auth-art"><div className="brand-mark">C</div><p className="auth-kicker">CALL FAMILY</p><h1>Keep your people<br /><em>close.</em></h1><p>Private conversations, shared moments, and the people who matter most.</p><div className="auth-orbit"><span>✦</span><span>♡</span><span>✦</span></div></div><form className="auth-card" onSubmit={submit}><p className="eyebrow">{mode === 'login' ? 'Welcome back' : 'Join the family'}</p><h2>{mode === 'login' ? 'Sign in to CFAM' : 'Create your account'}</h2><p className="auth-subtitle">{mode === 'login' ? 'Your conversations are waiting for you.' : 'A few details, then you are ready to connect.'}</p>{mode === 'signup' && <div className="form-grid"><label>First name<input required value={firstName} onChange={(event) => setFirstName(event.target.value)} /></label><label>Last name<input required value={lastName} onChange={(event) => setLastName(event.target.value)} /></label></div>}{mode === 'signup' && <div className="form-grid"><label>Username<input required pattern="[A-Za-z0-9._-]+" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="alex.rivera" /></label><label>Age<input required min="13" max="120" type="number" value={age} onChange={(event) => setAge(event.target.value)} /></label></div>}<label>Email address<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label><label>Password<input required minLength={6} type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>{error && <p className="auth-error">{error}</p>}<button className="auth-submit" disabled={busy}>{busy ? 'Please wait...' : mode === 'login' ? 'Sign in' : 'Create account'} <ArrowLeft size={17} /></button><p className="auth-switch">{mode === 'login' ? 'New to CFAM?' : 'Already have an account?'} <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError('') }}>{mode === 'login' ? 'Create an account' : 'Sign in'}</button></p></form></main>
+  const signupDetails = mode === 'signup' && signupStep === 'details'
+  return <main className="auth-shell"><div className="auth-art"><div className="brand-mark">C</div><p className="auth-kicker">CALL FAMILY</p><h1>Keep your people<br /><em>close.</em></h1><p>Private conversations, shared moments, and the people who matter most.</p><div className="auth-orbit"><span>✦</span><span>♡</span><span>✦</span></div></div><form className="auth-card" onSubmit={submit}><p className="eyebrow">{mode === 'login' ? 'Welcome back' : signupDetails ? 'Join the family' : 'Phone verification'}</p><h2>{mode === 'login' ? 'Sign in to CFAM' : signupDetails ? 'Create your account' : 'Verify your phone'}</h2><p className="auth-subtitle">{mode === 'login' ? 'Your conversations are waiting for you.' : signupDetails ? 'A few details, then we will verify your phone.' : `Enter the code sent to ${phone}.`}</p>{signupDetails && <><div className="form-grid"><label>First name<input required value={firstName} onChange={(event) => setFirstName(event.target.value)} /></label><label>Last name<input required value={lastName} onChange={(event) => setLastName(event.target.value)} /></label></div><div className="form-grid"><label>Username<input required pattern="[A-Za-z0-9._-]+" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="alex.rivera" /></label><label>Age<input required min="13" max="120" type="number" value={age} onChange={(event) => setAge(event.target.value)} /></label></div><label>Phone number<input required type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+9779812345678" /></label></>}{mode === 'login' && <><label>Email address<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label><label>Password<input required minLength={6} type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label></>}{!signupDetails && mode === 'signup' && <label>SMS code<input required inputMode="numeric" pattern="[0-9]{6}" value={code} onChange={(event) => setCode(event.target.value)} placeholder="123456" /></label>}{error && <p className="auth-error">{error}</p>}{mode === 'signup' && signupDetails && <div id="phone-recaptcha" className="phone-recaptcha" />}{<button className="auth-submit" disabled={busy}>{busy ? 'Please wait...' : mode === 'login' ? 'Sign in' : signupDetails ? 'Send SMS code' : 'Verify phone and continue'} <ArrowLeft size={17} /></button>}{mode === 'signup' && !signupDetails && <button type="button" className="auth-secondary" onClick={() => { setSignupStep('details'); setConfirmation(null); setError(''); resetRecaptcha() }}>Change phone number</button>}<p className="auth-switch">{mode === 'login' ? 'New to CFAM?' : 'Already have an account?'} <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setSignupStep('details'); setConfirmation(null); setError(''); resetRecaptcha() }}>{mode === 'login' ? 'Create an account' : 'Sign in'}</button></p></form></main>
 }
 
 function VerificationScreen({ user, onVerified }: { user: User; onVerified: (user: User) => Promise<void> }) {
@@ -311,15 +346,24 @@ function App() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [, setAuthRefresh] = useState(0)
-  useEffect(() => onAuthStateChanged(auth, async (nextUser) => { setUser(nextUser); if (nextUser) { const profileSnapshot = await getDoc(doc(db, 'users', nextUser.uid)); setProfile(profileSnapshot.exists() ? profileSnapshot.data() as UserProfile : null) } else setProfile(null); setLoading(false) }), [])
+  const authFlowRef = useRef(false)
+  useEffect(() => onAuthStateChanged(auth, async (nextUser) => { if (authFlowRef.current) return; setUser(nextUser); if (nextUser) { const profileSnapshot = await getDoc(doc(db, 'users', nextUser.uid)); setProfile(profileSnapshot.exists() ? profileSnapshot.data() as UserProfile : null) } else setProfile(null); setLoading(false) }), [])
   const continueAfterVerification = async (verifiedUser: User) => {
     setUser(verifiedUser)
     const profileSnapshot = await getDoc(doc(db, 'users', verifiedUser.uid))
     setProfile(profileSnapshot.exists() ? profileSnapshot.data() as UserProfile : null)
     setAuthRefresh((current) => current + 1)
   }
+  const continueAfterSignup = async () => {
+    authFlowRef.current = false
+    const signedInUser = auth.currentUser
+    if (!signedInUser) return
+    setUser(signedInUser)
+    const profileSnapshot = await getDoc(doc(db, 'users', signedInUser.uid))
+    setProfile(profileSnapshot.exists() ? profileSnapshot.data() as UserProfile : null)
+  }
   if (loading) return <main className="auth-loading"><div className="brand-mark">C</div><p>Opening CFAM...</p></main>
-  if (!user) return <AuthScreen />
+  if (!user) return <AuthScreen onSignupFlowChange={(active) => { authFlowRef.current = active }} onSignupComplete={continueAfterSignup} />
   if (!user.emailVerified) return <VerificationScreen user={user} onVerified={continueAfterVerification} />
   if (!profile) return <ProfileSetupScreen user={user} onSaved={setProfile} />
   return <Workspace user={user} profile={profile} />
