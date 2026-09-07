@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ConfirmationResult, User } from "firebase/auth";
+import type { User } from "firebase/auth";
 import {
-  RecaptchaVerifier,
   createUserWithEmailAndPassword,
-  linkWithPhoneNumber,
   onAuthStateChanged,
   sendEmailVerification,
   signInWithEmailAndPassword,
@@ -1090,10 +1088,6 @@ function AuthScreen({
   onSignupComplete: () => Promise<void>;
 }) {
   const [mode, setMode] = useState<"login" | "signup">("login");
-  const [signupStep, setSignupStep] = useState<"details" | "phone">("details");
-  const [verificationMethod, setVerificationMethod] = useState<"email" | "sms">(
-    "email",
-  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -1119,80 +1113,8 @@ function AuthScreen({
 
   useEffect(() => () => resetRecaptcha(), []);
 
-  const renderRecaptcha = async () => {
-    if (!recaptcha.current)
-      recaptcha.current = new RecaptchaVerifier(auth, "phone-recaptcha", {
-        size: "normal",
       });
     if (!recaptchaRendered.current) {
-      await recaptcha.current.render();
-      recaptchaRendered.current = true;
-    }
-  };
-
-  useEffect(() => {
-    if (mode !== "signup" || signupStep !== "details" || verificationMethod !== "sms") {
-      resetRecaptcha();
-      return;
-    }
-    void renderRecaptcha().catch((renderError) => {
-      setError(
-        renderError instanceof Error
-          ? renderError.message.replace("Firebase: ", "")
-          : "Unable to load the reCAPTCHA. Refresh and try again.",
-      );
-    });
-  }, [mode, signupStep, verificationMethod]);
-
-  const createPhoneChallenge = async () => {
-    const localPhone = phone.replace(/\D/g, "");
-    if (!/^\d{10}$/.test(localPhone)) {
-      setError("Enter the complete 10-digit mobile number.");
-      return;
-    }
-    const normalizedPhone = `${countryCode}${localPhone}`;
-    await renderRecaptcha();
-    const verifier = recaptcha.current;
-    if (!verifier) throw new Error("Unable to load the reCAPTCHA. Refresh and try again.");
-    const credential = auth.currentUser;
-    if (!credential)
-      throw new Error("Your signup session expired. Please start again.");
-    const result = await Promise.race([
-      linkWithPhoneNumber(credential, normalizedPhone, verifier),
-      new Promise<ConfirmationResult>((_, reject) =>
-        window.setTimeout(
-          () =>
-            reject(
-              new Error(
-                "Phone verification took too long. Complete the reCAPTCHA and try again.",
-              ),
-            ),
-          30000,
-        ),
-      ),
-    ]).catch((requestError) => {
-      resetRecaptcha();
-      throw requestError;
-    });
-    setConfirmation(result);
-    setSignupStep("phone");
-  };
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setError("");
-    setBusy(true);
-    try {
-      if (mode === "login")
-        await signInWithEmailAndPassword(auth, email, password);
-      else if (signupStep === "details") {
-        if (!email.trim() || !phone.trim() || !password)
-          throw new Error("Email, phone number, and password are required.");
-        const localPhone = phone.replace(/\D/g, "");
-        if (!/^\d{10}$/.test(localPhone))
-          throw new Error("Enter the complete 10-digit mobile number.");
-        const normalizedPhone = `${countryCode}${localPhone}`;
-        onSignupFlowChange(true);
         const credential =
           auth.currentUser ??
           (await createUserWithEmailAndPassword(auth, email, password));
