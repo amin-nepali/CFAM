@@ -35,6 +35,7 @@ import './App.css'
 import './auth.css'
 import './mobile.css'
 import './profile-image.css'
+import './search.css'
 import { auth, db } from './lib/firebase'
 
 type Conversation = {
@@ -92,7 +93,6 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [people, setPeople] = useState<Person[]>([])
   const [search, setSearch] = useState('')
-  const [conversationSearch, setConversationSearch] = useState('')
   const [message, setMessage] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [callMode, setCallMode] = useState<'voice' | 'video' | null>(null)
@@ -106,7 +106,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
 
   const activeConversation = conversations.find((conversation) => conversation.id === activeId)
   const filteredPeople = useMemo(() => people.filter((person) => `${person.name} ${person.handle}`.toLowerCase().includes(search.toLowerCase())), [people, search])
-  const visibleConversations = useMemo(() => conversations.filter((conversation) => `${conversation.name} ${conversation.handle} ${conversation.lastMessage}`.toLowerCase().includes(conversationSearch.toLowerCase())), [conversations, conversationSearch])
+  const visibleConversations = useMemo(() => conversations.filter((conversation) => `${conversation.name} ${conversation.handle} ${conversation.lastMessage}`.toLowerCase().includes(search.toLowerCase())), [conversations, search])
 
   const openPerson = async (person: Person) => {
     const conversationId = [user.uid, person.id].sort().join('_')
@@ -179,8 +179,8 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
 
       <section className="conversation-panel">
         <header className="panel-header"><button className="icon-button mobile-menu" onClick={() => setShowMobileNav(true)} aria-label="Open menu"><Menu size={21} /></button><div><p className="eyebrow">Your inbox</p><h1>Messages</h1></div><button className="new-message" aria-label="Start a new message">+ <span>New message</span></button></header>
-        <div className="conversation-search"><Search size={17} /><input value={conversationSearch} onChange={(event) => setConversationSearch(event.target.value)} placeholder="Search conversations" aria-label="Search conversations" /><kbd>⌘ K</kbd></div>
-        <div className="conversation-list"><div className="list-title"><span>Recent · live</span><button className="filter-button">All <ChevronDown size={14} /></button></div>{visibleConversations.map((conversation) => <button className={`conversation-row ${activeId === conversation.id ? 'selected' : ''}`} key={conversation.id} onClick={() => { setActiveId(conversation.id); setMobileChatOpen(true); setShowMobileNav(false) }}><Avatar initials={conversation.avatar} color={conversation.color} /><span className="conversation-copy"><strong>{conversation.name}</strong><small>{conversation.lastMessage}</small></span><span className="conversation-meta"><small>{conversation.time}</small>{conversation.unread && <b>{conversation.unread}</b>}</span>{conversation.online && <span className="online-dot" />}</button>)}</div>
+        <div className="conversation-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search conversations or people" aria-label="Search conversations or people" /><button className="search-clear" onClick={() => setSearch('')} aria-label="Clear search"><X size={16} /></button></div>
+        <div className="conversation-list"><div className="list-title"><span>{search ? 'Search results' : 'Recent · live'}</span><button className="filter-button">All <ChevronDown size={14} /></button></div>{visibleConversations.map((conversation) => <button className={`conversation-row ${activeId === conversation.id ? 'selected' : ''}`} key={conversation.id} onClick={() => { setActiveId(conversation.id); setMobileChatOpen(true); setShowMobileNav(false) }}><Avatar initials={conversation.avatar} color={conversation.color} /><span className="conversation-copy"><strong>{conversation.name}</strong><small>{conversation.lastMessage}</small></span><span className="conversation-meta"><small>{conversation.time}</small>{conversation.unread && <b>{conversation.unread}</b>}</span>{conversation.online && <span className="online-dot" />}</button>)}{search && filteredPeople.length > 0 && <div className="inline-people"><p className="inline-results-label">People</p>{filteredPeople.map((person) => <button key={person.handle} className="person-result" onClick={() => { void openPerson(person) }}><Avatar initials={person.avatar} color={person.color} size="small" /><span><strong>{person.name}</strong><small>{person.handle} · {person.meta}</small></span><ArrowLeft size={16} /></button>)}</div>}{search && visibleConversations.length === 0 && filteredPeople.length === 0 && <p className="empty-search">No conversations or people found for “{search}”.</p>}</div>
         <div className="discover-card"><div className="discover-icon"><Search size={18} /></div><div><strong>Find your people</strong><p>Search by username to start a new conversation.</p></div><ArrowLeft size={17} className="discover-arrow" /></div>
       </section>
 
@@ -191,9 +191,6 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
       </section>
 
       {detailsOpen && activeConversation && <aside className="details-panel"><div className="details-heading"><span>Contact details</span><button className="icon-button" onClick={() => setDetailsOpen(false)} aria-label="Close contact details"><X size={18} /></button></div><div className="contact-profile"><Avatar initials={activeConversation.avatar} color={activeConversation.color} size="large" /><h2>{activeConversation.name}</h2><p>{activeConversation.handle}</p><span className="profile-status"><span className="online-dot offline-dot" /> Offline</span></div><div className="quick-actions"><button onClick={() => setCallMode('voice')}><Phone size={18} /><span>Call</span></button><button onClick={() => setCallMode('video')}><Video size={18} /><span>Video</span></button><button onClick={() => setShowProfile(true)}><UserRound size={18} /><span>Profile</span></button></div></aside>}
-
-      {search && <div className="search-popover"><div className="search-popover-heading"><strong>Search people</strong><button onClick={() => setSearch('')} aria-label="Close search"><X size={17} /></button></div>{filteredPeople.map((person) => <button key={person.handle} className="person-result" onClick={() => { void openPerson(person) }}><Avatar initials={person.avatar} color={person.color} size="small" /><span><strong>{person.name}</strong><small>{person.handle} · {person.meta}</small></span><ArrowLeft size={16} /></button>)}{filteredPeople.length === 0 && <p className="empty-search">No people found for “{search}”.</p>}</div>}
-      <div className="global-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Find someone by username" aria-label="Find someone by username" /><button onClick={() => setSearch('')} aria-label="Close search"><X size={16} /></button></div>
 
       {callMode && activeConversation && <div className="call-overlay"><div className="call-background"><div className="call-topbar"><span className="call-secure"><Check size={15} /> Encrypted call</span><button className="call-close" onClick={() => setCallMode(null)} aria-label="End call"><X size={20} /></button></div><div className="call-person"><Avatar initials={activeConversation.avatar} color={activeConversation.color} size="large" /><h2>{activeConversation.name}</h2><p>{callMode === 'video' ? 'Video calling' : 'Calling'} · connecting...</p></div><div className="call-local-video"><Camera size={19} /><span>You</span></div><div className="call-controls"><button aria-label="Mute microphone"><Mic size={21} /></button>{callMode === 'video' && <button aria-label="Turn off camera"><Video size={21} /></button>}<button className="end-call" onClick={() => setCallMode(null)} aria-label="End call"><Phone size={22} /></button><button aria-label="More call options"><MoreHorizontal size={22} /></button></div></div></div>}
       {showProfile && <ProfileModal profile={currentProfile} userId={user.uid} onClose={() => setShowProfile(false)} onSaved={(nextProfile) => { setCurrentProfile(nextProfile); setShowProfile(false) }} />}
