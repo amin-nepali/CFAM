@@ -231,6 +231,27 @@ function VerificationScreen({ user }: { user: User }) {
   return <main className="auth-shell"><div className="auth-art"><div className="brand-mark">C</div><p className="auth-kicker">ONE MORE STEP</p><h1>Check your<br /><em>inbox.</em></h1><p>CFAM sent a verification link to {user.email}. Verify it to keep your account secure.</p></div><div className="auth-card"><p className="eyebrow">Email verification</p><h2>Verify your email</h2><p className="auth-subtitle">After verifying, return here and refresh this page to enter CFAM.</p><button className="auth-submit" onClick={() => { void sendEmailVerification(user); setSent(true) }}>{sent ? 'Verification email sent' : 'Resend verification email'} <ArrowLeft size={17} /></button><button className="auth-switch" onClick={() => void signOut(auth)}>Sign out</button></div></main>
 }
 
+function ProfileSetupScreen({ user, onSaved }: { user: User; onSaved: (profile: UserProfile) => void }) {
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [username, setUsername] = useState('')
+  const [age, setAge] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const submit = async (event: FormEvent) => {
+    event.preventDefault(); setError(''); setBusy(true)
+    try {
+      const normalized = username.trim().toLowerCase()
+      const profile = { username: normalized, usernameLower: normalized, firstName: firstName.trim(), lastName: lastName.trim(), age: Number(age), emailVerified: user.emailVerified, createdAt: serverTimestamp() }
+      await setDoc(doc(db, 'users', user.uid), profile)
+      await setDoc(doc(db, 'usernames', normalized), { uid: user.uid })
+      onSaved(profile)
+    } catch (setupError) { setError(setupError instanceof Error ? setupError.message.replace('Firebase: ', '') : 'Unable to save your profile.') }
+    finally { setBusy(false) }
+  }
+  return <main className="auth-shell"><div className="auth-art"><div className="brand-mark">C</div><p className="auth-kicker">WELCOME TO CFAM</p><h1>Make it<br /><em>yours.</em></h1><p>Your account is verified. Add a few details so people know who they are talking to.</p></div><form className="auth-card" onSubmit={submit}><p className="eyebrow">First-time setup</p><h2>Complete your profile</h2><p className="auth-subtitle">This information is stored securely in Firestore.</p><div className="form-grid"><label>First name<input required value={firstName} onChange={(event) => setFirstName(event.target.value)} /></label><label>Last name<input required value={lastName} onChange={(event) => setLastName(event.target.value)} /></label></div><div className="form-grid"><label>Username<input required pattern="[A-Za-z0-9._-]+" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="alex.rivera" /></label><label>Age<input required min="13" max="120" type="number" value={age} onChange={(event) => setAge(event.target.value)} /></label></div>{error && <p className="auth-error">{error}</p>}<button className="auth-submit" disabled={busy}>{busy ? 'Saving profile...' : 'Enter CFAM'} <ArrowLeft size={17} /></button><button type="button" className="auth-switch" onClick={() => void signOut(auth)}>Sign out</button></form></main>
+}
+
 function App() {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -239,7 +260,7 @@ function App() {
   if (loading) return <main className="auth-loading"><div className="brand-mark">C</div><p>Opening CFAM...</p></main>
   if (!user) return <AuthScreen />
   if (!user.emailVerified) return <VerificationScreen user={user} />
-  if (!profile) return <AuthScreen />
+  if (!profile) return <ProfileSetupScreen user={user} onSaved={setProfile} />
   return <Workspace user={user} profile={profile} />
 }
 
