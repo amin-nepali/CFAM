@@ -13,11 +13,19 @@ service cloud.firestore {
       return request.resource.data.username is string
         && request.resource.data.username.size() >= 3
         && request.resource.data.username.size() <= 30
+        && request.resource.data.usernameLower is string
+        && request.resource.data.usernameLower == request.resource.data.username
         && request.resource.data.firstName is string
+        && request.resource.data.firstName.size() > 0
         && request.resource.data.lastName is string
+        && request.resource.data.lastName.size() > 0
         && request.resource.data.age is int
         && request.resource.data.age >= 13
         && request.resource.data.age <= 120
+        && (!('phoneNumber' in request.resource.data)
+          || request.resource.data.phoneNumber is string)
+        && (!('emailVerified' in request.resource.data)
+          || request.resource.data.emailVerified is bool)
         && (!('photoUrl' in request.resource.data)
           || (request.resource.data.photoUrl is string
             && request.resource.data.photoUrl.size() <= 700000));

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
 import {
   createUserWithEmailAndPassword,
+  deleteUser,
   onAuthStateChanged,
   sendEmailVerification,
   signInWithEmailAndPassword,
@@ -1581,18 +1582,28 @@ function AuthScreen({
       } else {
         if (!email.trim() || !phone.trim() || !password)
           throw new Error("Email, phone number, and password are required.");
+        const normalized = username.trim().toLowerCase();
+        const parsedAge = Number(age);
+        if (!firstName.trim() || !lastName.trim() || !normalized)
+          throw new Error("First name, last name, and username are required.");
+        if (!Number.isInteger(parsedAge) || parsedAge < 13 || parsedAge > 120)
+          throw new Error("Age must be a whole number between 13 and 120.");
         const localPhone = phone.replace(/\D/g, "");
         if (!/^\d{10}$/.test(localPhone))
           throw new Error("Enter the complete 10-digit mobile number.");
         onSignupFlowChange(true);
         const credential = await createUserWithEmailAndPassword(auth, email, password);
-        const normalized = username.trim().toLowerCase();
+        const usernameSnapshot = await getDoc(doc(db, "usernames", normalized));
+        if (usernameSnapshot.exists()) {
+          await deleteUser(credential.user);
+          throw new Error("That username is already taken. Choose another one.");
+        }
         await setDoc(doc(db, "users", credential.user.uid), {
           username: normalized,
           usernameLower: normalized,
           firstName: firstName.trim(),
           lastName: lastName.trim(),
-          age: Number(age),
+          age: parsedAge,
           phoneNumber: `${countryCode}${localPhone}`,
           emailVerified: false,
           createdAt: serverTimestamp(),
