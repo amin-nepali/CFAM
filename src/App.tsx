@@ -245,6 +245,7 @@ function AuthScreen({ onSignupFlowChange, onSignupComplete }: { onSignupFlowChan
   const [lastName, setLastName] = useState('')
   const [username, setUsername] = useState('')
   const [age, setAge] = useState('')
+  const [countryCode, setCountryCode] = useState('+977')
   const [phone, setPhone] = useState('')
   const [code, setCode] = useState('')
   const [confirmation, setConfirmation] = useState<ConfirmationResult | null>(null)
@@ -260,11 +261,12 @@ function AuthScreen({ onSignupFlowChange, onSignupComplete }: { onSignupFlowChan
   useEffect(() => () => resetRecaptcha(), [])
 
   const createPhoneChallenge = async () => {
-    const normalizedPhone = phone.trim().replace(/[\s()-]/g, '')
-    if (!/^\+\d{10,15}$/.test(normalizedPhone)) {
-      setError('Enter your phone number in international format, for example +9779812345678.')
+    const localPhone = phone.replace(/\D/g, '')
+    if (!/^\d{10}$/.test(localPhone)) {
+      setError('Enter the complete 10-digit mobile number.')
       return
     }
+    const normalizedPhone = `${countryCode}${localPhone}`
     if (!recaptcha.current) recaptcha.current = new RecaptchaVerifier(auth, 'phone-recaptcha', { size: 'normal' })
     await recaptcha.current.render()
     const credential = auth.currentUser
@@ -272,7 +274,10 @@ function AuthScreen({ onSignupFlowChange, onSignupComplete }: { onSignupFlowChan
     const result = await Promise.race([
       linkWithPhoneNumber(credential, normalizedPhone, recaptcha.current),
       new Promise<ConfirmationResult>((_, reject) => window.setTimeout(() => reject(new Error('Phone verification took too long. Complete the reCAPTCHA and try again.')), 30000)),
-    ])
+    ]).catch((requestError) => {
+      resetRecaptcha()
+      throw requestError
+    })
     setConfirmation(result)
     setSignupStep('phone')
   }
@@ -283,8 +288,9 @@ function AuthScreen({ onSignupFlowChange, onSignupComplete }: { onSignupFlowChan
       if (mode === 'login') await signInWithEmailAndPassword(auth, email, password)
       else if (signupStep === 'details') {
         if (!email.trim() || !phone.trim() || !password) throw new Error('Email, phone number, and password are required.')
-        const normalizedPhone = phone.trim().replace(/[\s()-]/g, '')
-        if (!/^\+\d{10,15}$/.test(normalizedPhone)) throw new Error('Enter your phone number in international format, for example +9779812345678.')
+        const localPhone = phone.replace(/\D/g, '')
+        if (!/^\d{10}$/.test(localPhone)) throw new Error('Enter the complete 10-digit mobile number.')
+        const normalizedPhone = `${countryCode}${localPhone}`
         onSignupFlowChange(true)
         const credential = auth.currentUser ?? await createUserWithEmailAndPassword(auth, email, password)
         const signedUpUser = 'user' in credential ? credential.user : credential
