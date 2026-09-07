@@ -164,6 +164,7 @@ function compressImage(file: File) {
 
 const formatCallDuration = (seconds: number) =>
   `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
+const copyrightYear = new Date().getFullYear();
 
 function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
   const [currentProfile, setCurrentProfile] = useState(profile);
@@ -863,7 +864,10 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
           <button className="logout-button" onClick={() => void signOut(auth)}>
             <LogOut size={17} /> Sign out
           </button>
-          <small className="version">CFAM v1.0 · Call family</small>
+          <small className="version">
+            CFAM (Connect Family) by Amin<br />
+            Copyright by Amin Nepali {copyrightYear}
+          </small>
         </div>
       </aside>
 
@@ -1597,7 +1601,7 @@ function AuthScreen({
     <main className="auth-shell">
       <div className="auth-art">
         <div className="brand-mark">C</div>
-        <p className="auth-kicker">CALL FAMILY</p>
+        <p className="auth-kicker">CFAM (Connect Family) by Amin</p>
         <h1>
           Keep your people
           <br />
