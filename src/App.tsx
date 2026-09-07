@@ -1138,6 +1138,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
                 <X size={20} />
               </button>
             </div>
+            <div className="call-participant-name">{activeConversation.handle || activeConversation.name}</div>
             {!(callMode === "video" && callStatus === "connected") && <div className="call-person">
               <Avatar
                 initials={activeConversation.avatar}

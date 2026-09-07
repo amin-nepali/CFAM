@@ -2,3 +2,4 @@
 .call-background{width:100vw;height:100svh;max-width:none;max-height:none}
 .call-remote-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border:0;z-index:0;background:#302835}.call-local-video video{width:100%;height:100%;object-fit:cover;border-radius:8px}.call-local-video{overflow:hidden}.call-local-video video + *{display:none}
 .call-background audio{display:none}
+.call-participant-name{position:absolute;top:24px;left:50%;z-index:1;max-width:calc(100% - 150px);transform:translateX(-50%);padding:7px 12px;border:1px solid #ffffff24;border-radius:999px;background:#211a2488;color:#fff;font:700 12px Manrope;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
