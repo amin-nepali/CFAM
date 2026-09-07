@@ -55,6 +55,7 @@ import {
 } from "lucide-react";
 import "./App.css";
 import "./call.css";
+import "./chat-layout.css";
 import "./auth.css";
 import "./mobile.css";
 import "./profile-image.css";
@@ -168,6 +169,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
   const [isMuted, setIsMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
   const [mediaReady, setMediaReady] = useState(0);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [showProfile, setShowProfile] = useState(false);
   const [showMobileNav, setShowMobileNav] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -996,13 +998,11 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
                             ? ` · ${Math.floor(item.durationSeconds / 60)}:${String(item.durationSeconds % 60).padStart(2, "0")}`
                             : ""}
                         </p>
-                      ) : item.image && (
-                        <img
-                          className="message-image"
-                          src={item.image}
-                          alt="Shared in chat"
-                        />
-                      )}{" "}
+                      ) : item.image ? (
+                        <button className="image-preview-trigger" onClick={() => setPreviewImage(item.image ?? "")} aria-label="Open shared image">
+                          <img className="message-image" src={item.image} alt="Shared in chat" />
+                        </button>
+                      ) : null}
                       {item.type !== "call" && item.text && <p>{item.text}</p>}
                       <div className="message-time">
                         {item.time} {item.mine && <CheckCheck size={14} />}
@@ -1181,6 +1181,12 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
             setShowProfile(false);
           }}
         />
+      )}
+      {previewImage && (
+        <div className="image-preview-backdrop" onClick={() => setPreviewImage(null)} role="dialog" aria-label="Image preview">
+          <button className="image-preview-close" onClick={() => setPreviewImage(null)} aria-label="Close image preview"><X size={22} /></button>
+          <img className="image-preview" src={previewImage} alt="Preview of shared image" onClick={(event) => event.stopPropagation()} />
+        </div>
       )}
     </main>
   );
