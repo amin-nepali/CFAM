@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ConfirmationResult, User } from 'firebase/auth'
-import { RecaptchaVerifier, createUserWithEmailAndPassword, linkWithPhoneNumber, onAuthStateChanged, sendEmailVerification, signInWithEmailAndPassword, signOut } from 'firebase/auth'
+import { RecaptchaVerifier, createUserWithEmailAndPassword, onAuthStateChanged, sendEmailVerification, signInWithEmailAndPassword, signInWithPhoneNumber, signOut } from 'firebase/auth'
 import type { FormEvent } from 'react'
 import { addDoc, arrayRemove, arrayUnion, collection, doc, getDoc, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore'
 import {
@@ -39,6 +39,7 @@ import './search.css'
 import './data-status.css'
 import './sections.css'
 import './verification.css'
+import './verification-choice.css'
 import { auth, db } from './lib/firebase'
 
 type Conversation = {
@@ -64,7 +65,7 @@ type ChatMessage = {
   image?: string
 }
 
-type UserProfile = { username: string; firstName: string; lastName: string; age: number; photoUrl?: string; emailVerified?: boolean }
+type UserProfile = { username: string; firstName: string; lastName: string; age: number; photoUrl?: string; emailVerified?: boolean; phoneVerified?: boolean }
 type Person = UserProfile & { id: string; name: string; handle: string; meta: string; avatar: string; color: string }
 
 function Avatar({ initials, color, size = 'medium', photoUrl }: { initials: string; color: string; size?: 'small' | 'medium' | 'large'; photoUrl?: string }) {
@@ -237,6 +238,7 @@ function ProfileModal({ profile, userId, onClose, onSaved }: { profile: UserProf
 function AuthScreen({ onSignupFlowChange, onSignupComplete }: { onSignupFlowChange: (active: boolean) => void; onSignupComplete: () => Promise<void> }) {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [signupStep, setSignupStep] = useState<'details' | 'phone'>('details')
+  const [verificationMethod, setVerificationMethod] = useState<'email' | 'sms'>('email')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [firstName, setFirstName] = useState('')
@@ -263,10 +265,8 @@ function AuthScreen({ onSignupFlowChange, onSignupComplete }: { onSignupFlowChan
       setError('Enter your phone number in international format, for example +9779812345678.')
       return
     }
-    const credential = auth.currentUser
-    if (!credential) throw new Error('Your signup session expired. Please start again.')
     if (!recaptcha.current) recaptcha.current = new RecaptchaVerifier(auth, 'phone-recaptcha', { size: 'normal' })
-    const result = await linkWithPhoneNumber(credential, normalizedPhone, recaptcha.current)
+    const result = await signInWithPhoneNumber(auth, normalizedPhone, recaptcha.current)
     setConfirmation(result)
     setSignupStep('phone')
   }
@@ -275,25 +275,31 @@ function AuthScreen({ onSignupFlowChange, onSignupComplete }: { onSignupFlowChan
     event.preventDefault(); setError(''); setBusy(true)
     try {
       if (mode === 'login') await signInWithEmailAndPassword(auth, email, password)
-      else if (signupStep === 'details') {
+      else if (signupStep === 'details' && verificationMethod === 'email') {
         onSignupFlowChange(true)
         const credential = await createUserWithEmailAndPassword(auth, email, password)
+        const normalized = username.trim().toLowerCase()
+        await setDoc(doc(db, 'users', credential.user.uid), { username: normalized, usernameLower: normalized, firstName: firstName.trim(), lastName: lastName.trim(), age: Number(age), phoneNumber: phone.trim() || null, emailVerified: false, phoneVerified: false, createdAt: serverTimestamp() })
+        await setDoc(doc(db, 'usernames', normalized), { uid: credential.user.uid })
+        await sendEmailVerification(credential.user)
+        await onSignupComplete()
+      } else if (signupStep === 'details' && verificationMethod === 'sms') {
+        onSignupFlowChange(true)
         await createPhoneChallenge()
-        void credential
       } else if (!confirmation) throw new Error('Request a verification code first.')
       else {
-        await confirmation.confirm(code.trim())
+        const phoneCredential = await confirmation.confirm(code.trim())
         const normalized = username.trim().toLowerCase()
-        await setDoc(doc(db, 'users', auth.currentUser?.uid ?? ''), { username: normalized, usernameLower: normalized, firstName: firstName.trim(), lastName: lastName.trim(), age: Number(age), phoneNumber: phone.trim(), emailVerified: false, phoneVerified: true, createdAt: serverTimestamp() })
-        await setDoc(doc(db, 'usernames', normalized), { uid: auth.currentUser?.uid })
-        if (auth.currentUser) await sendEmailVerification(auth.currentUser)
+        await setDoc(doc(db, 'users', phoneCredential.user.uid), { username: normalized, usernameLower: normalized, firstName: firstName.trim(), lastName: lastName.trim(), age: Number(age), phoneNumber: phone.trim(), emailVerified: false, phoneVerified: true, createdAt: serverTimestamp() })
+        await setDoc(doc(db, 'usernames', normalized), { uid: phoneCredential.user.uid })
         await onSignupComplete()
       }
     } catch (submissionError) { setError(submissionError instanceof Error ? submissionError.message.replace('Firebase: ', '') : 'Unable to continue.') }
     finally { setBusy(false) }
   }
   const signupDetails = mode === 'signup' && signupStep === 'details'
-  return <main className="auth-shell"><div className="auth-art"><div className="brand-mark">C</div><p className="auth-kicker">CALL FAMILY</p><h1>Keep your people<br /><em>close.</em></h1><p>Private conversations, shared moments, and the people who matter most.</p><div className="auth-orbit"><span>✦</span><span>♡</span><span>✦</span></div></div><form className="auth-card" onSubmit={submit}><p className="eyebrow">{mode === 'login' ? 'Welcome back' : signupDetails ? 'Join the family' : 'Phone verification'}</p><h2>{mode === 'login' ? 'Sign in to CFAM' : signupDetails ? 'Create your account' : 'Verify your phone'}</h2><p className="auth-subtitle">{mode === 'login' ? 'Your conversations are waiting for you.' : signupDetails ? 'A few details, then we will verify your phone.' : `Enter the code sent to ${phone}.`}</p>{signupDetails && <><div className="form-grid"><label>First name<input required value={firstName} onChange={(event) => setFirstName(event.target.value)} /></label><label>Last name<input required value={lastName} onChange={(event) => setLastName(event.target.value)} /></label></div><div className="form-grid"><label>Username<input required pattern="[A-Za-z0-9._-]+" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="alex.rivera" /></label><label>Age<input required min="13" max="120" type="number" value={age} onChange={(event) => setAge(event.target.value)} /></label></div><label>Phone number<input required type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+9779812345678" /></label></>}{mode === 'login' && <><label>Email address<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label><label>Password<input required minLength={6} type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label></>}{!signupDetails && mode === 'signup' && <label>SMS code<input required inputMode="numeric" pattern="[0-9]{6}" value={code} onChange={(event) => setCode(event.target.value)} placeholder="123456" /></label>}{error && <p className="auth-error">{error}</p>}{mode === 'signup' && signupDetails && <div id="phone-recaptcha" className="phone-recaptcha" />}{<button className="auth-submit" disabled={busy}>{busy ? 'Please wait...' : mode === 'login' ? 'Sign in' : signupDetails ? 'Send SMS code' : 'Verify phone and continue'} <ArrowLeft size={17} /></button>}{mode === 'signup' && !signupDetails && <button type="button" className="auth-secondary" onClick={() => { setSignupStep('details'); setConfirmation(null); setError(''); resetRecaptcha() }}>Change phone number</button>}<p className="auth-switch">{mode === 'login' ? 'New to CFAM?' : 'Already have an account?'} <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setSignupStep('details'); setConfirmation(null); setError(''); resetRecaptcha() }}>{mode === 'login' ? 'Create an account' : 'Sign in'}</button></p></form></main>
+  const emailRequired = mode === 'login' || (mode === 'signup' && verificationMethod === 'email')
+  return <main className="auth-shell"><div className="auth-art"><div className="brand-mark">C</div><p className="auth-kicker">CALL FAMILY</p><h1>Keep your people<br /><em>close.</em></h1><p>Private conversations, shared moments, and the people who matter most.</p><div className="auth-orbit"><span>✦</span><span>♡</span><span>✦</span></div></div><form className="auth-card" onSubmit={submit}><p className="eyebrow">{mode === 'login' ? 'Welcome back' : signupDetails ? 'Join the family' : 'Phone verification'}</p><h2>{mode === 'login' ? 'Sign in to CFAM' : signupDetails ? 'Create your account' : 'Verify your phone'}</h2><p className="auth-subtitle">{mode === 'login' ? 'Your conversations are waiting for you.' : signupDetails ? 'Choose one verification method. The other contact field is optional.' : `Enter the code sent to ${phone}.`}</p>{signupDetails && <div className="verification-choice"><span>Verify with</span><button type="button" className={verificationMethod === 'email' ? 'selected' : ''} onClick={() => setVerificationMethod('email')}>Email</button><button type="button" className={verificationMethod === 'sms' ? 'selected' : ''} onClick={() => setVerificationMethod('sms')}>SMS</button></div>}{signupDetails && <><div className="form-grid"><label>First name<input required value={firstName} onChange={(event) => setFirstName(event.target.value)} /></label><label>Last name<input required value={lastName} onChange={(event) => setLastName(event.target.value)} /></label></div><div className="form-grid"><label>Username<input required pattern="[A-Za-z0-9._-]+" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="alex.rivera" /></label><label>Age<input required min="13" max="120" type="number" value={age} onChange={(event) => setAge(event.target.value)} /></label></div><label>Email address<input required={emailRequired} type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder={verificationMethod === 'sms' ? 'Optional' : ''} /></label><label>Phone number<input required={verificationMethod === 'sms'} type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+9779812345678" /></label>{verificationMethod === 'email' && <label>Password<input required minLength={6} type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>}</>}{mode === 'login' && <><label>Email address<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label><label>Password<input required minLength={6} type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label></>}{!signupDetails && mode === 'signup' && <label>SMS code<input required inputMode="numeric" pattern="[0-9]{6}" value={code} onChange={(event) => setCode(event.target.value)} placeholder="123456" /></label>}{error && <p className="auth-error">{error}</p>}{mode === 'signup' && signupDetails && verificationMethod === 'sms' && <div id="phone-recaptcha" className="phone-recaptcha" />}{<button className="auth-submit" disabled={busy}>{busy ? 'Please wait...' : mode === 'login' ? 'Sign in' : signupDetails ? verificationMethod === 'sms' ? 'Send SMS code' : 'Create account' : 'Verify phone and continue'} <ArrowLeft size={17} /></button>}{mode === 'signup' && !signupDetails && <button type="button" className="auth-secondary" onClick={() => { setSignupStep('details'); setConfirmation(null); setError(''); resetRecaptcha() }}>Change phone number</button>}<p className="auth-switch">{mode === 'login' ? 'New to CFAM?' : 'Already have an account?'} <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setSignupStep('details'); setConfirmation(null); setError(''); resetRecaptcha() }}>{mode === 'login' ? 'Create an account' : 'Sign in'}</button></p></form></main>
 }
 
 function VerificationScreen({ user, onVerified }: { user: User; onVerified: (user: User) => Promise<void> }) {
@@ -364,7 +370,7 @@ function App() {
   }
   if (loading) return <main className="auth-loading"><div className="brand-mark">C</div><p>Opening CFAM...</p></main>
   if (!user) return <AuthScreen onSignupFlowChange={(active) => { authFlowRef.current = active }} onSignupComplete={continueAfterSignup} />
-  if (!user.emailVerified) return <VerificationScreen user={user} onVerified={continueAfterVerification} />
+  if (!user.emailVerified && !profile?.phoneVerified) return <VerificationScreen user={user} onVerified={continueAfterVerification} />
   if (!profile) return <ProfileSetupScreen user={user} onSaved={setProfile} />
   return <Workspace user={user} profile={profile} />
 }
