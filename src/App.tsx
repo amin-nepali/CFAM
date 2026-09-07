@@ -1109,13 +1109,40 @@ function AuthScreen({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const recaptcha = useRef<RecaptchaVerifier | null>(null);
+  const recaptchaRendered = useRef(false);
 
   const resetRecaptcha = () => {
     recaptcha.current?.clear();
     recaptcha.current = null;
+    recaptchaRendered.current = false;
   };
 
   useEffect(() => () => resetRecaptcha(), []);
+
+  const renderRecaptcha = async () => {
+    if (!recaptcha.current)
+      recaptcha.current = new RecaptchaVerifier(auth, "phone-recaptcha", {
+        size: "normal",
+      });
+    if (!recaptchaRendered.current) {
+      await recaptcha.current.render();
+      recaptchaRendered.current = true;
+    }
+  };
+
+  useEffect(() => {
+    if (mode !== "signup" || signupStep !== "details" || verificationMethod !== "sms") {
+      resetRecaptcha();
+      return;
+    }
+    void renderRecaptcha().catch((renderError) => {
+      setError(
+        renderError instanceof Error
+          ? renderError.message.replace("Firebase: ", "")
+          : "Unable to load the reCAPTCHA. Refresh and try again.",
+      );
+    });
+  }, [mode, signupStep, verificationMethod]);
 
   const createPhoneChallenge = async () => {
     const localPhone = phone.replace(/\D/g, "");
@@ -1124,11 +1151,7 @@ function AuthScreen({
       return;
     }
     const normalizedPhone = `${countryCode}${localPhone}`;
-    if (!recaptcha.current)
-      recaptcha.current = new RecaptchaVerifier(auth, "phone-recaptcha", {
-        size: "normal",
-      });
-    await recaptcha.current.render();
+    await renderRecaptcha();
     const credential = auth.currentUser;
     if (!credential)
       throw new Error("Your signup session expired. Please start again.");
