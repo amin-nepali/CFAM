@@ -461,6 +461,12 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
     if (remoteVideo.current) remoteVideo.current.srcObject = null;
   };
 
+  const playRemoteAudio = () => {
+    if (!remoteAudio.current || !remoteStream.current) return;
+    remoteAudio.current.srcObject = remoteStream.current;
+    void remoteAudio.current.play().catch(() => undefined);
+  };
+
   const recordCall = async (callDocumentId: string, duration: number) => {
     const callReference = doc(db, "calls", callDocumentId);
     let shouldRecord = false;
@@ -512,18 +518,19 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
   const createPeerConnection = async (id: string, mode: "voice" | "video") => {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: mode === "video" });
     localStream.current = stream;
+    stream.getAudioTracks().forEach((track) => { track.enabled = true; });
     setMediaReady((current) => current + 1);
     if (localVideo.current) localVideo.current.srcObject = stream;
     remoteStream.current = new MediaStream();
     if (remoteVideo.current) remoteVideo.current.srcObject = remoteStream.current;
-    if (remoteAudio.current) remoteAudio.current.srcObject = remoteStream.current;
+    playRemoteAudio();
     const connection = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
     peerConnection.current = connection;
     stream.getTracks().forEach((track) => connection.addTrack(track, stream));
     connection.ontrack = (event) => {
       event.streams[0]?.getTracks().forEach((track) => remoteStream.current?.addTrack(track));
       if (remoteVideo.current && remoteStream.current) remoteVideo.current.srcObject = remoteStream.current;
-      if (remoteAudio.current && remoteStream.current) remoteAudio.current.srcObject = remoteStream.current;
+      playRemoteAudio();
     };
     connection.onicecandidate = (event) => {
       if (event.candidate) void addDoc(collection(db, "calls", id, "candidates"), { senderId: user.uid, candidate: event.candidate.toJSON(), createdAt: serverTimestamp() });
@@ -622,7 +629,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
   useEffect(() => {
     if (localVideo.current && localStream.current) localVideo.current.srcObject = localStream.current;
     if (remoteVideo.current && remoteStream.current) remoteVideo.current.srcObject = remoteStream.current;
-    if (remoteAudio.current && remoteStream.current) remoteAudio.current.srcObject = remoteStream.current;
+    playRemoteAudio();
   }, [callMode, mediaReady]);
 
   return (
