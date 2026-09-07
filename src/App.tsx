@@ -73,6 +73,7 @@ type Conversation = {
   handle: string;
   avatar: string;
   color: string;
+  photoUrl?: string;
   lastMessage: string;
   time: string;
   unread?: number;
@@ -154,6 +155,9 @@ function compressImage(file: File) {
   });
 }
 
+const formatCallDuration = (seconds: number) =>
+  `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
+
 function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
   const [currentProfile, setCurrentProfile] = useState(profile);
   const [activeId, setActiveId] = useState("");
@@ -165,7 +169,8 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
   const [callMode, setCallMode] = useState<"voice" | "video" | null>(null);
   const [callStatus, setCallStatus] = useState<"idle" | "calling" | "connected">("idle");
   const [callError, setCallError] = useState("");
-  const [incomingCall, setIncomingCall] = useState<{ id: string; conversationId: string; mode: "voice" | "video"; callerName: string } | null>(null);
+  const [callElapsed, setCallElapsed] = useState(0);
+  const [incomingCall, setIncomingCall] = useState<{ id: string; conversationId: string; mode: "voice" | "video"; callerName: string; callerPhotoUrl?: string } | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
   const [mediaReady, setMediaReady] = useState(0);
@@ -242,8 +247,12 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
           [person.id]: person.handle,
         },
         memberAvatars: {
-          [user.uid]: `${profile.firstName[0]}${profile.lastName[0]}`,
+          [user.uid]: `${currentProfile.firstName[0]}${currentProfile.lastName[0]}`,
           [person.id]: person.avatar,
+        },
+        memberPhotoUrls: {
+          [user.uid]: currentProfile.photoUrl ?? "",
+          [person.id]: person.photoUrl ?? "",
         },
         memberColors: { [user.uid]: "plum", [person.id]: person.color },
         lastMessage: "Start a conversation",
@@ -279,6 +288,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
                 handle: data.memberHandles?.[otherId] ?? "",
                 avatar: data.memberAvatars?.[otherId] ?? "?",
                 color: data.memberColors?.[otherId] ?? "plum",
+                photoUrl: data.memberPhotoUrls?.[otherId] ?? people.find((person) => person.id === otherId)?.photoUrl,
                 lastMessage: data.lastMessage ?? "Start a conversation",
                 time:
                   data.lastMessageAt
@@ -297,7 +307,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
       },
       () => setDataError("Unable to load your inbox right now."),
     );
-  }, [user.uid]);
+  }, [people, user.uid]);
 
   useEffect(
     () =>
@@ -553,6 +563,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
     setCallError("");
     setCallMode(mode);
     setCallStatus("calling");
+    setCallElapsed(0);
     callStartedAt.current = null;
     try {
       const callReference = doc(collection(db, "calls"));
@@ -565,7 +576,8 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
         callerId: user.uid,
         receiverId: activeConversation.memberIds.find((memberId) => memberId !== user.uid),
         participantIds: activeConversation.memberIds,
-        callerName: `${profile.firstName} ${profile.lastName}`,
+        callerName: `${currentProfile.firstName} ${currentProfile.lastName}`,
+        callerPhotoUrl: currentProfile.photoUrl ?? "",
         mode,
         offer: { type: offer.type, sdp: offer.sdp },
         status: "ringing",
@@ -591,6 +603,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
       setCallMode(incomingCall.mode);
       setActiveId(incomingCall.conversationId);
       setCallStatus("connected");
+      setCallElapsed(0);
       callId.current = incomingCall.id;
       callStartedAt.current = Date.now();
       const connection = await createPeerConnection(incomingCall.id, incomingCall.mode);
@@ -620,11 +633,19 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
     const incomingQuery = query(collection(db, "calls"), where("participantIds", "array-contains", user.uid), where("status", "==", "ringing"), limit(10));
     return onSnapshot(incomingQuery, (snapshot) => {
       const call = snapshot.docs.find((item) => item.data().callerId !== user.uid);
-      if (call) setIncomingCall({ id: call.id, conversationId: call.data().conversationId, mode: call.data().mode === "video" ? "video" : "voice", callerName: call.data().callerName ?? "CFAM member" });
+      if (call) setIncomingCall({ id: call.id, conversationId: call.data().conversationId, mode: call.data().mode === "video" ? "video" : "voice", callerName: call.data().callerName ?? "CFAM member", callerPhotoUrl: call.data().callerPhotoUrl });
     });
   }, [user.uid]);
 
   useEffect(() => () => stopCallMedia(), []);
+
+  useEffect(() => {
+    if (callStatus !== "connected" || !callStartedAt.current) return undefined;
+    const updateElapsed = () => setCallElapsed(Math.max(0, Math.floor((Date.now() - callStartedAt.current!) / 1000)));
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(timer);
+  }, [callStatus]);
 
   useEffect(() => {
     if (localVideo.current && localStream.current) localVideo.current.srcObject = localStream.current;
@@ -837,6 +858,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
                     <Avatar
                       initials={conversation.avatar}
                       color={conversation.color}
+                      photoUrl={conversation.photoUrl}
                     />
                     <span className="conversation-copy">
                       <strong>{conversation.name}</strong>
@@ -876,6 +898,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
                           initials={person.avatar}
                           color={person.color}
                           size="small"
+                          photoUrl={person.photoUrl}
                         />
                         <span>
                           <strong>{person.name}</strong>
@@ -936,6 +959,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
                 <Avatar
                   initials={activeConversation.avatar}
                   color={activeConversation.color}
+                  photoUrl={activeConversation.photoUrl}
                 />
                 <div>
                   <h2>{activeConversation.name}</h2>
@@ -995,6 +1019,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
                         initials={activeConversation.avatar}
                         color={activeConversation.color}
                         size="small"
+                        photoUrl={activeConversation.photoUrl}
                       />
                     )}
                     <div className="message-bubble">
@@ -1089,6 +1114,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
               initials={activeConversation.avatar}
               color={activeConversation.color}
               size="large"
+              photoUrl={activeConversation.photoUrl}
             />
             <h2>{activeConversation.name}</h2>
             <p>{activeConversation.handle}</p>
@@ -1117,7 +1143,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
         <div className="call-overlay">
           <div className="call-background">
             <div className="call-person">
-              <Avatar initials="CF" color="plum" size="large" />
+              <Avatar initials="CF" color="plum" size="large" photoUrl={incomingCall.callerPhotoUrl} />
               <h2>{incomingCall.callerName}</h2>
               <p>Incoming {incomingCall.mode === "video" ? "video" : "voice"} call</p>
               <div className="call-controls">
@@ -1146,11 +1172,13 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
               </button>
             </div>
             <div className="call-participant-name">{activeConversation.handle || activeConversation.name}</div>
+            <div className="call-status">{callStatus === "connected" ? formatCallDuration(callElapsed) : callStatus === "calling" ? "Calling..." : "Connecting..."}</div>
             {!(callMode === "video" && callStatus === "connected") && <div className="call-person">
               <Avatar
                 initials={activeConversation.avatar}
                 color={activeConversation.color}
                 size="large"
+                photoUrl={activeConversation.photoUrl}
               />
               <p>{callError || (callStatus === "connected" ? "Connected" : callStatus === "calling" ? "Calling..." : "Connecting...")}</p>
             </div>}
