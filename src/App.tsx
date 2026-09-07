@@ -1138,16 +1138,15 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
                 <X size={20} />
               </button>
             </div>
-            <div className="call-person">
+            {!(callMode === "video" && callStatus === "connected") && <div className="call-person">
               <Avatar
                 initials={activeConversation.avatar}
                 color={activeConversation.color}
                 size="large"
               />
-              <h2>{activeConversation.name}</h2>
               <p>{callError || (callStatus === "connected" ? "Connected" : callStatus === "calling" ? "Calling..." : "Connecting...")}</p>
-            </div>
-            {callMode === "video" ? <div className="call-local-video"><video ref={localVideo} autoPlay muted playsInline /></div> : <div className="call-local-video"><Mic size={19} /><span>You</span></div>}
+            </div>}
+            {callMode === "video" && <div className="call-local-video"><video ref={localVideo} autoPlay muted playsInline /></div>}
             <div className="call-controls">
               <button onClick={() => { localStream.current?.getAudioTracks().forEach((track) => { track.enabled = isMuted; }); setIsMuted((current) => !current); }} aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}>
                 <Mic size={21} />
