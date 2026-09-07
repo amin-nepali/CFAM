@@ -9,6 +9,17 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == userId;
     }
 
+    function validProfile() {
+      return request.resource.data.username is string
+        && request.resource.data.username.size() >= 3
+        && request.resource.data.username.size() <= 30
+        && request.resource.data.firstName is string
+        && request.resource.data.lastName is string
+        && request.resource.data.age is int
+        && request.resource.data.age >= 13
+        && request.resource.data.age <= 120;
+    }
+
     function memberOf(conversationId) {
       return signedIn()
         && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.memberIds;
@@ -16,20 +27,21 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if signedIn();
-      allow create, update: if ownsUser(userId)
-        && request.resource.data.username is string
-        && request.resource.data.firstName is string
-        && request.resource.data.lastName is string
-        && request.resource.data.age is int
-        && request.resource.data.age >= 13
-        && request.resource.data.age <= 120;
+      allow create: if ownsUser(userId) && validProfile();
+      allow update: if ownsUser(userId) && validProfile()
+        && request.resource.data.usernameLower == request.resource.data.username;
       allow delete: if ownsUser(userId);
     }
 
     match /usernames/{username} {
       allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
-      allow update, delete: if signedIn() && resource.data.uid == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && !exists(/databases/$(database)/documents/usernames/$(username));
+      allow update: if signedIn()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
     }
 
     match /conversations/{conversationId} {
