@@ -63,6 +63,7 @@ import "./profile-image.css";
 import "./search.css";
 import "./data-status.css";
 import "./sections.css";
+import "./message-size.css";
 import "./verification.css";
 import "./verification-choice.css";
 import { auth, db } from "./lib/firebase";
