@@ -14,6 +14,7 @@ import {
   arrayUnion,
   collection,
   doc,
+  deleteDoc,
   getDoc,
   limit,
   onSnapshot,
@@ -80,6 +81,10 @@ type Conversation = {
   online?: boolean;
   kind?: "group";
   archivedBy?: string[];
+  deletedBy?: string[];
+  messageRequestStatus?: "pending" | "accepted";
+  messageRequestTo?: string;
+  clearedAt?: number;
   updatedAt?: number;
 };
 
@@ -92,6 +97,7 @@ type ChatMessage = {
   type?: "text" | "image" | "call";
   callMode?: "voice" | "video";
   durationSeconds?: number;
+  senderId?: string;
 };
 
 type UserProfile = {
@@ -166,6 +172,9 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
+  const [messageMenuId, setMessageMenuId] = useState<string | null>(null);
+  const [conversationMenuId, setConversationMenuId] = useState<string | null>(null);
   const [callMode, setCallMode] = useState<"voice" | "video" | null>(null);
   const [callStatus, setCallStatus] = useState<"idle" | "calling" | "connected">("idle");
   const [callError, setCallError] = useState("");
@@ -205,10 +214,13 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
   const remoteVideo = useRef<HTMLVideoElement>(null);
   const remoteAudio = useRef<HTMLAudioElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagePressTimer = useRef<number | null>(null);
+  const conversationPressTimer = useRef<number | null>(null);
 
   const activeConversation = conversations.find(
     (conversation) => conversation.id === activeId,
   );
+  const isMessageRequestPending = activeConversation?.messageRequestStatus === "pending" && activeConversation.messageRequestTo === user.uid;
   const filteredPeople = useMemo(
     () =>
       people.filter((person) =>
@@ -222,13 +234,14 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
     () =>
       conversations.filter((conversation) => {
         const archived = conversation.archivedBy?.includes(user.uid) ?? false;
+        const deleted = conversation.deletedBy?.includes(user.uid) ?? false;
         const matchesSearch =
           `${conversation.name} ${conversation.handle} ${conversation.lastMessage}`
             .toLowerCase()
             .includes(search.toLowerCase());
         return activeSection === "archived"
-          ? archived && matchesSearch
-          : !archived && matchesSearch;
+          ? archived && !deleted && matchesSearch
+          : !archived && !deleted && matchesSearch;
       }),
     [activeSection, conversations, search, user.uid],
   );
@@ -300,6 +313,10 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
                     }) ?? "",
                 online: false,
                 archivedBy: data.archivedBy ?? [],
+                deletedBy: data.deletedBy ?? [],
+                messageRequestStatus: data.messageRequestStatus,
+                messageRequestTo: data.messageRequestTo,
+                clearedAt: data.clearedAtBy?.[user.uid]?.toMillis?.() ?? 0,
                 updatedAt: data.updatedAt?.toMillis?.() ?? 0,
               };
             })
@@ -374,8 +391,11 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
         limit(200),
       ),
       (snapshot) =>
-        setMessages(
-          snapshot.docs.map((item) => {
+          setMessages(
+          snapshot.docs.filter((item) => {
+            const createdAt = item.data().createdAt?.toMillis?.() ?? 0;
+            return !activeConversation?.clearedAt || createdAt > activeConversation.clearedAt;
+          }).map((item) => {
             const data = item.data();
             return {
               id: item.id,
@@ -384,6 +404,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
               type: data.type,
               callMode: data.callMode,
               durationSeconds: data.durationSeconds,
+              senderId: data.senderId,
               time:
                 data.createdAt
                   ?.toDate?.()
@@ -402,7 +423,12 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
             : "Unable to load messages right now.",
         ),
     );
-  }, [activeId, user.uid]);
+  }, [activeConversation?.clearedAt, activeId, user.uid]);
+
+  useEffect(() => {
+    setSelectedMessageIds([]);
+    setMessageMenuId(null);
+  }, [activeId]);
 
   useEffect(() => {
     const updateOnline = () => setIsOnline(navigator.onLine);
@@ -423,12 +449,17 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
     const trimmed = message.trim();
     if (!trimmed) return;
     if (!activeId) return;
+    if (activeConversation?.messageRequestStatus === "pending" && activeConversation.messageRequestTo === user.uid) return;
     void addDoc(collection(db, "conversations", activeId, "messages"), {
       senderId: user.uid,
       text: trimmed,
       type: "text",
       createdAt: serverTimestamp(),
     });
+    if (activeConversation && !messages.length && activeConversation.messageRequestStatus !== "accepted") {
+      const recipientId = activeConversation.memberIds.find((memberId) => memberId !== user.uid);
+      void updateDoc(doc(db, "conversations", activeId), { messageRequestStatus: "pending", messageRequestTo: recipientId });
+    }
     void updateDoc(doc(db, "conversations", activeId), {
       lastMessage: trimmed,
       lastMessageAt: serverTimestamp(),
@@ -441,6 +472,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
     if (!file || !file.type.startsWith("image/")) return;
     const image = await compressImage(file);
     if (!activeId) return;
+    if (activeConversation?.messageRequestStatus === "pending" && activeConversation.messageRequestTo === user.uid) return;
     void addDoc(collection(db, "conversations", activeId, "messages"), {
       senderId: user.uid,
       text: "",
@@ -448,6 +480,10 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
       imageBase64: image,
       createdAt: serverTimestamp(),
     });
+    if (activeConversation && !messages.length && activeConversation.messageRequestStatus !== "accepted") {
+      const recipientId = activeConversation.memberIds.find((memberId) => memberId !== user.uid);
+      void updateDoc(doc(db, "conversations", activeId), { messageRequestStatus: "pending", messageRequestTo: recipientId });
+    }
     void updateDoc(doc(db, "conversations", activeId), {
       lastMessage: "Image",
       lastMessageAt: serverTimestamp(),
@@ -461,6 +497,46 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
         ? arrayRemove(user.uid)
         : arrayUnion(user.uid),
     });
+      setConversationMenuId(null);
+  };
+
+  const acceptMessageRequest = async () => {
+    if (!activeConversation) return;
+    await updateDoc(doc(db, "conversations", activeConversation.id), { messageRequestStatus: "accepted", messageRequestTo: null });
+  };
+
+  const unsendMessage = async (messageId: string) => {
+    if (!activeId) return;
+    await deleteDoc(doc(db, "conversations", activeId, "messages", messageId));
+    setMessageMenuId(null);
+  };
+
+  const deleteSelectedMessages = async () => {
+    if (!activeId) return;
+    const deletions = selectedMessageIds
+      .filter((messageId) => messages.find((item) => item.id === messageId)?.mine)
+      .map((messageId) => deleteDoc(doc(db, "conversations", activeId, "messages", messageId)));
+    await Promise.all(deletions);
+    setSelectedMessageIds([]);
+  };
+
+  const clearChat = async (conversation: Conversation) => {
+    await updateDoc(doc(db, "conversations", conversation.id), {
+      [`clearedAtBy.${user.uid}`]: serverTimestamp(),
+      lastMessage: "Chat cleared",
+      lastMessageAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    setConversationMenuId(null);
+  };
+
+  const deleteChat = async (conversation: Conversation) => {
+    await updateDoc(doc(db, "conversations", conversation.id), { deletedBy: arrayUnion(user.uid) });
+    if (activeId === conversation.id) {
+      setActiveId("");
+      setMessages([]);
+    }
+    setConversationMenuId(null);
   };
 
   const stopCallMedia = () => {
@@ -872,7 +948,14 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
                 <div className="conversation-entry" key={conversation.id}>
                   <button
                     className={`conversation-row ${activeId === conversation.id ? "selected" : ""}`}
+                    onPointerDown={() => {
+                      conversationPressTimer.current = window.setTimeout(() => setConversationMenuId(conversation.id), 550);
+                    }}
+                    onPointerUp={() => { if (conversationPressTimer.current) window.clearTimeout(conversationPressTimer.current); }}
+                    onPointerCancel={() => { if (conversationPressTimer.current) window.clearTimeout(conversationPressTimer.current); }}
+                    onContextMenu={(event) => { event.preventDefault(); setConversationMenuId(conversation.id); }}
                     onClick={() => {
+                      if (conversationMenuId === conversation.id) return;
                       setActiveId(conversation.id);
                       setMobileChatOpen(true);
                       setShowMobileNav(false);
@@ -891,17 +974,17 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
                       <small>{conversation.time}</small>
                     </span>
                   </button>
-                  <button
-                    className="archive-action"
-                    onClick={() => void archiveConversation(conversation)}
-                    aria-label={
-                      activeSection === "archived"
-                        ? "Restore conversation"
-                        : "Archive conversation"
-                    }
-                  >
-                    {activeSection === "archived" ? "Restore" : "Archive"}
-                  </button>
+                  {conversationMenuId === conversation.id ? (
+                    <div className="conversation-menu">
+                      <button onClick={() => void archiveConversation(conversation)}>{activeSection === "archived" ? "Restore" : "Archive"}</button>
+                      <button onClick={() => void clearChat(conversation)}>Clear chat</button>
+                      <button onClick={() => void deleteChat(conversation)}>Delete chat</button>
+                    </div>
+                  ) : (
+                    <button className="archive-action" onClick={() => void archiveConversation(conversation)} aria-label={activeSection === "archived" ? "Restore conversation" : "Archive conversation"}>
+                      {activeSection === "archived" ? "Restore" : "Archive"}
+                    </button>
+                  )}
                 </div>
               ))}
               {activeSection === "messages" &&
@@ -1028,6 +1111,13 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
         <div className="chat-body">
           {activeConversation && (
             <>
+              {activeConversation.messageRequestStatus === "pending" && activeConversation.messageRequestTo === user.uid && (
+                <div className="message-request">
+                  <strong>Message request</strong>
+                  <p>This person wants to start a conversation with you.</p>
+                  <button onClick={() => void acceptMessageRequest()}>Accept request</button>
+                </div>
+              )}
               <div className="chat-date">
                 <span>Live</span>
               </div>
@@ -1036,7 +1126,22 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
                   <div
                     className={`message-row ${item.mine ? "mine" : ""}`}
                     key={item.id}
+                    onPointerDown={() => {
+                      if (item.mine) messagePressTimer.current = window.setTimeout(() => setMessageMenuId(item.id), 550);
+                    }}
+                    onPointerUp={() => { if (messagePressTimer.current) window.clearTimeout(messagePressTimer.current); }}
+                    onPointerCancel={() => { if (messagePressTimer.current) window.clearTimeout(messagePressTimer.current); }}
+                    onContextMenu={(event) => { if (item.mine) { event.preventDefault(); setMessageMenuId(item.id); } }}
                   >
+                    {selectedMessageIds.length > 0 && item.mine && (
+                      <input
+                        className="message-select"
+                        type="checkbox"
+                        checked={selectedMessageIds.includes(item.id)}
+                        onChange={() => setSelectedMessageIds((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id])}
+                        aria-label="Select message"
+                      />
+                    )}
                     {!item.mine && (
                       <Avatar
                         initials={activeConversation.avatar}
@@ -1063,10 +1168,19 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
                         {item.time} {item.mine && <CheckCheck size={14} />}
                       </div>
                     </div>
+                    {messageMenuId === item.id && item.mine && (
+                      <div className="message-menu">
+                        <button onClick={() => void unsendMessage(item.id)}>Unsend</button>
+                        <button onClick={() => { setSelectedMessageIds((current) => current.includes(item.id) ? current : [...current, item.id]); setMessageMenuId(null); }}>Select</button>
+                      </div>
+                    )}
                   </div>
                 ))}
                 <div ref={messagesEndRef} aria-hidden="true" />
               </div>
+              {selectedMessageIds.length > 0 && (
+                <button className="delete-selected" onClick={() => void deleteSelectedMessages()}>Delete selected ({selectedMessageIds.length})</button>
+              )}
             </>
           )}
         </div>
@@ -1077,6 +1191,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
             </button>
             <button
               className="icon-button"
+              disabled={!activeConversation || isMessageRequestPending}
               onClick={() => imageInput.current?.click()}
               aria-label="Send image"
             >
@@ -1097,14 +1212,16 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
             />
           </div>
           <input
-            disabled={!activeConversation}
+            disabled={!activeConversation || isMessageRequestPending}
             value={message}
             onChange={(event) => setMessage(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") sendMessage();
             }}
             placeholder={
-              activeConversation
+              isMessageRequestPending
+                ? "Accept the message request to reply"
+                : activeConversation
                 ? "Write a message..."
                 : "Select a conversation first"
             }
@@ -1112,7 +1229,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
           />
           <button
             className="send-button"
-            disabled={!activeConversation}
+            disabled={!activeConversation || isMessageRequestPending}
             onClick={sendMessage}
             aria-label="Send message"
           >
