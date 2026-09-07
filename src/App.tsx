@@ -266,9 +266,13 @@ function AuthScreen({ onSignupFlowChange, onSignupComplete }: { onSignupFlowChan
       return
     }
     if (!recaptcha.current) recaptcha.current = new RecaptchaVerifier(auth, 'phone-recaptcha', { size: 'normal' })
+    await recaptcha.current.render()
     const credential = auth.currentUser
     if (!credential) throw new Error('Your signup session expired. Please start again.')
-    const result = await linkWithPhoneNumber(credential, normalizedPhone, recaptcha.current)
+    const result = await Promise.race([
+      linkWithPhoneNumber(credential, normalizedPhone, recaptcha.current),
+      new Promise<ConfirmationResult>((_, reject) => window.setTimeout(() => reject(new Error('Phone verification took too long. Complete the reCAPTCHA and try again.')), 30000)),
+    ])
     setConfirmation(result)
     setSignupStep('phone')
   }
@@ -282,13 +286,14 @@ function AuthScreen({ onSignupFlowChange, onSignupComplete }: { onSignupFlowChan
         const normalizedPhone = phone.trim().replace(/[\s()-]/g, '')
         if (!/^\+\d{10,15}$/.test(normalizedPhone)) throw new Error('Enter your phone number in international format, for example +9779812345678.')
         onSignupFlowChange(true)
-        const credential = await createUserWithEmailAndPassword(auth, email, password)
+        const credential = auth.currentUser ?? await createUserWithEmailAndPassword(auth, email, password)
+        const signedUpUser = 'user' in credential ? credential.user : credential
         if (verificationMethod === 'sms') await createPhoneChallenge()
         else {
           const normalized = username.trim().toLowerCase()
-          await setDoc(doc(db, 'users', credential.user.uid), { username: normalized, usernameLower: normalized, firstName: firstName.trim(), lastName: lastName.trim(), age: Number(age), phoneNumber: normalizedPhone, emailVerified: false, phoneVerified: false, verificationMethod, createdAt: serverTimestamp() })
-          await setDoc(doc(db, 'usernames', normalized), { uid: credential.user.uid })
-          await sendEmailVerification(credential.user)
+          await setDoc(doc(db, 'users', signedUpUser.uid), { username: normalized, usernameLower: normalized, firstName: firstName.trim(), lastName: lastName.trim(), age: Number(age), phoneNumber: normalizedPhone, emailVerified: false, phoneVerified: false, verificationMethod, createdAt: serverTimestamp() })
+          await setDoc(doc(db, 'usernames', normalized), { uid: signedUpUser.uid })
+          await sendEmailVerification(signedUpUser)
           await onSignupComplete()
         }
       } else if (!confirmation) throw new Error('Request a verification code first.')
