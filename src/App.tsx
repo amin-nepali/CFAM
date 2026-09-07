@@ -34,6 +34,7 @@ import {
 import './App.css'
 import './auth.css'
 import './mobile.css'
+import './profile-image.css'
 import { auth, db } from './lib/firebase'
 
 type Conversation = {
@@ -60,8 +61,8 @@ type ChatMessage = {
 type UserProfile = { username: string; firstName: string; lastName: string; age: number; photoUrl?: string; emailVerified?: boolean }
 type Person = UserProfile & { id: string; name: string; handle: string; meta: string; avatar: string; color: string }
 
-function Avatar({ initials, color, size = 'medium' }: { initials: string; color: string; size?: 'small' | 'medium' | 'large' }) {
-  return <div className={`avatar avatar-${size} avatar-${color}`}>{initials}</div>
+function Avatar({ initials, color, size = 'medium', photoUrl }: { initials: string; color: string; size?: 'small' | 'medium' | 'large'; photoUrl?: string }) {
+  return <div className={`avatar avatar-${size} avatar-${color} ${photoUrl ? 'avatar-with-image' : ''}`} style={photoUrl ? { backgroundImage: `url(${photoUrl})` } : undefined}>{!photoUrl && initials}</div>
 }
 
 function compressImage(file: File) {
@@ -86,6 +87,7 @@ function compressImage(file: File) {
 }
 
 function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
+  const [currentProfile, setCurrentProfile] = useState(profile)
   const [activeId, setActiveId] = useState('')
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [people, setPeople] = useState<Person[]>([])
@@ -170,7 +172,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
     <main className={`app-shell ${sidebarCollapsed ? 'sidebar-is-collapsed' : ''} ${detailsOpen ? 'details-is-open' : ''} ${mobileChatOpen ? 'mobile-chat-open' : ''}`}>
       <aside className={`sidebar ${showMobileNav ? 'sidebar-open' : ''} ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
         <div className="brand-row"><div className="brand-mark">C</div><span>CFAM</span><button className="icon-button sidebar-toggle mobile-close" onClick={() => setShowMobileNav(false)} aria-label="Close menu"><X size={19} /></button><button className="icon-button sidebar-toggle desktop-toggle" onClick={() => setSidebarCollapsed((current) => !current)} aria-label="Collapse sidebar">{sidebarCollapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}</button></div>
-        <div className="profile-mini" onClick={() => setShowProfile(true)} role="button" tabIndex={0}><Avatar initials={`${profile.firstName[0]}${profile.lastName[0]}`} color="plum" size="small" /><span><strong>{profile.firstName} {profile.lastName}</strong><small>@{profile.username}</small></span><ChevronDown size={15} /></div>
+        <div className="profile-mini" onClick={() => setShowProfile(true)} role="button" tabIndex={0}><Avatar initials={`${currentProfile.firstName[0]}${currentProfile.lastName[0]}`} color="plum" size="small" photoUrl={currentProfile.photoUrl} /><span><strong>{currentProfile.firstName} {currentProfile.lastName}</strong><small>@{currentProfile.username}</small></span><ChevronDown size={15} /></div>
         <nav className="main-nav"><p className="nav-label">Workspace</p><button className="nav-item active"><UsersRound size={18} /> Messages <span className="nav-count">4</span></button><button className="nav-item"><Bell size={18} /> Notifications <span className="nav-dot" /></button><button className="nav-item"><Archive size={18} /> Archived</button><p className="nav-label nav-label-spaced">Manage</p><button className="nav-item"><Settings size={18} /> Settings</button><button className="nav-item"><CircleHelp size={18} /> Help center</button></nav>
         <div className="sidebar-bottom"><div className="plan-card"><div className="plan-top"><Sparkles size={15} /><span>Personal space</span></div><p>Make conversations feel more like you.</p><button onClick={() => setShowProfile(true)}>Edit your profile <ArrowLeft size={15} /></button></div><button className="logout-button" onClick={() => void signOut(auth)}><LogOut size={17} /> Sign out</button><small className="version">CFAM v1.0 · Call family</small></div>
       </aside>
@@ -194,9 +196,26 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
       <div className="global-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Find someone by username" aria-label="Find someone by username" /><button onClick={() => setSearch('')} aria-label="Close search"><X size={16} /></button></div>
 
       {callMode && activeConversation && <div className="call-overlay"><div className="call-background"><div className="call-topbar"><span className="call-secure"><Check size={15} /> Encrypted call</span><button className="call-close" onClick={() => setCallMode(null)} aria-label="End call"><X size={20} /></button></div><div className="call-person"><Avatar initials={activeConversation.avatar} color={activeConversation.color} size="large" /><h2>{activeConversation.name}</h2><p>{callMode === 'video' ? 'Video calling' : 'Calling'} · connecting...</p></div><div className="call-local-video"><Camera size={19} /><span>You</span></div><div className="call-controls"><button aria-label="Mute microphone"><Mic size={21} /></button>{callMode === 'video' && <button aria-label="Turn off camera"><Video size={21} /></button>}<button className="end-call" onClick={() => setCallMode(null)} aria-label="End call"><Phone size={22} /></button><button aria-label="More call options"><MoreHorizontal size={22} /></button></div></div></div>}
-      {showProfile && <div className="modal-backdrop" onClick={() => setShowProfile(false)}><div className="profile-modal" onClick={(event) => event.stopPropagation()}><div className="modal-heading"><div><p className="eyebrow">Your profile</p><h2>{profile.firstName} {profile.lastName}</h2></div><button className="icon-button" onClick={() => setShowProfile(false)} aria-label="Close profile"><X size={19} /></button></div><div className="profile-upload"><div className="profile-photo"><Avatar initials={`${profile.firstName[0]}${profile.lastName[0]}`} color="plum" size="large" /><button aria-label="Change profile image"><Camera size={16} /></button></div><div><strong>Profile image</strong><p>Show people who they’re talking to.</p></div></div><label>Username<input defaultValue={profile.username} /></label><div className="form-grid"><label>First name<input defaultValue={profile.firstName} /></label><label>Last name<input defaultValue={profile.lastName} /></label></div><label>Age<input defaultValue={profile.age} type="number" /></label><button className="save-profile" onClick={() => setShowProfile(false)}><Check size={17} /> Close profile</button></div></div>}
+      {showProfile && <ProfileModal profile={currentProfile} userId={user.uid} onClose={() => setShowProfile(false)} onSaved={(nextProfile) => { setCurrentProfile(nextProfile); setShowProfile(false) }} />}
     </main>
   )
+}
+
+function ProfileModal({ profile, userId, onClose, onSaved }: { profile: UserProfile; userId: string; onClose: () => void; onSaved: (profile: UserProfile) => void }) {
+  const [photoUrl, setPhotoUrl] = useState(profile.photoUrl ?? '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const imageInput = useRef<HTMLInputElement>(null)
+  const save = async () => {
+    setBusy(true); setError('')
+    try {
+      const nextProfile = { ...profile, photoUrl }
+      await updateDoc(doc(db, 'users', userId), { photoUrl })
+      onSaved(nextProfile)
+    } catch (saveError) { setError(saveError instanceof Error ? saveError.message.replace('Firebase: ', '') : 'Unable to update your profile image.') }
+    finally { setBusy(false) }
+  }
+  return <div className="modal-backdrop" onClick={onClose}><div className="profile-modal" onClick={(event) => event.stopPropagation()}><div className="modal-heading"><div><p className="eyebrow">Your profile</p><h2>{profile.firstName} {profile.lastName}</h2></div><button className="icon-button" onClick={onClose} aria-label="Close profile"><X size={19} /></button></div><div className="profile-upload"><div className="profile-photo"><Avatar initials={`${profile.firstName[0]}${profile.lastName[0]}`} color="plum" size="large" photoUrl={photoUrl} /><button onClick={() => imageInput.current?.click()} aria-label="Change profile image"><Camera size={16} /></button><input ref={imageInput} type="file" accept="image/*" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void compressImage(file).then(setPhotoUrl); event.currentTarget.value = '' }} /></div><div><strong>Profile image</strong><p>Choose a new image, then save your profile.</p></div></div>{error && <p className="auth-error">{error}</p>}<label>Username<input readOnly value={profile.username} /></label><div className="form-grid"><label>First name<input readOnly value={profile.firstName} /></label><label>Last name<input readOnly value={profile.lastName} /></label></div><label>Age<input readOnly value={profile.age} type="number" /></label><button className="save-profile" disabled={busy} onClick={() => void save()}><Check size={17} /> {busy ? 'Saving...' : 'Save profile'}</button></div></div>
 }
 
 function AuthScreen() {
@@ -236,20 +255,21 @@ function ProfileSetupScreen({ user, onSaved }: { user: User; onSaved: (profile: 
   const [lastName, setLastName] = useState('')
   const [username, setUsername] = useState('')
   const [age, setAge] = useState('')
+  const [photoUrl, setPhotoUrl] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setError(''); setBusy(true)
     try {
       const normalized = username.trim().toLowerCase()
-      const profile = { username: normalized, usernameLower: normalized, firstName: firstName.trim(), lastName: lastName.trim(), age: Number(age), emailVerified: user.emailVerified, createdAt: serverTimestamp() }
+      const profile = { username: normalized, usernameLower: normalized, firstName: firstName.trim(), lastName: lastName.trim(), age: Number(age), photoUrl, emailVerified: user.emailVerified, createdAt: serverTimestamp() }
       await setDoc(doc(db, 'users', user.uid), profile)
       await setDoc(doc(db, 'usernames', normalized), { uid: user.uid })
       onSaved(profile)
     } catch (setupError) { setError(setupError instanceof Error ? setupError.message.replace('Firebase: ', '') : 'Unable to save your profile.') }
     finally { setBusy(false) }
   }
-  return <main className="auth-shell"><div className="auth-art"><div className="brand-mark">C</div><p className="auth-kicker">WELCOME TO CFAM</p><h1>Make it<br /><em>yours.</em></h1><p>Your account is verified. Add a few details so people know who they are talking to.</p></div><form className="auth-card" onSubmit={submit}><p className="eyebrow">First-time setup</p><h2>Complete your profile</h2><p className="auth-subtitle">This information is stored securely in Firestore.</p><div className="form-grid"><label>First name<input required value={firstName} onChange={(event) => setFirstName(event.target.value)} /></label><label>Last name<input required value={lastName} onChange={(event) => setLastName(event.target.value)} /></label></div><div className="form-grid"><label>Username<input required pattern="[A-Za-z0-9._-]+" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="alex.rivera" /></label><label>Age<input required min="13" max="120" type="number" value={age} onChange={(event) => setAge(event.target.value)} /></label></div>{error && <p className="auth-error">{error}</p>}<button className="auth-submit" disabled={busy}>{busy ? 'Saving profile...' : 'Enter CFAM'} <ArrowLeft size={17} /></button><button type="button" className="auth-switch" onClick={() => void signOut(auth)}>Sign out</button></form></main>
+  return <main className="auth-shell"><div className="auth-art"><div className="brand-mark">C</div><p className="auth-kicker">WELCOME TO CFAM</p><h1>Make it<br /><em>yours.</em></h1><p>Your account is verified. Add a few details so people know who they are talking to.</p></div><form className="auth-card" onSubmit={submit}><p className="eyebrow">First-time setup</p><h2>Complete your profile</h2><p className="auth-subtitle">This information is stored securely in Firestore.</p><div className="setup-photo"><Avatar initials={`${firstName[0] ?? ''}${lastName[0] ?? ''}`} color="plum" size="large" photoUrl={photoUrl} /><label className="photo-picker">{photoUrl ? 'Change image' : 'Add profile image'}<input type="file" accept="image/*" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void compressImage(file).then(setPhotoUrl); event.currentTarget.value = '' }} /></label></div><div className="form-grid"><label>First name<input required value={firstName} onChange={(event) => setFirstName(event.target.value)} /></label><label>Last name<input required value={lastName} onChange={(event) => setLastName(event.target.value)} /></label></div><div className="form-grid"><label>Username<input required pattern="[A-Za-z0-9._-]+" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="alex.rivera" /></label><label>Age<input required min="13" max="120" type="number" value={age} onChange={(event) => setAge(event.target.value)} /></label></div>{error && <p className="auth-error">{error}</p>}<button className="auth-submit" disabled={busy}>{busy ? 'Saving profile...' : 'Enter CFAM'} <ArrowLeft size={17} /></button><button type="button" className="auth-switch" onClick={() => void signOut(auth)}>Sign out</button></form></main>
 }
 
 function App() {

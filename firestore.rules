@@ -17,7 +17,10 @@ service cloud.firestore {
         && request.resource.data.lastName is string
         && request.resource.data.age is int
         && request.resource.data.age >= 13
-        && request.resource.data.age <= 120;
+        && request.resource.data.age <= 120
+        && (!('photoUrl' in request.resource.data)
+          || (request.resource.data.photoUrl is string
+            && request.resource.data.photoUrl.size() <= 700000));
     }
 
     function memberOf(conversationId) {
