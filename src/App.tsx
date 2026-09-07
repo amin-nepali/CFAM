@@ -602,6 +602,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
       listenForCallChanges(callReference.id, true);
     } catch (callStartError) {
       stopCallMedia();
+      callId.current = "";
       setCallMode(null);
       setCallStatus("idle");
       setCallError(callStartError instanceof Error ? callStartError.message : "Unable to start the call.");
@@ -639,7 +640,10 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
     setCallMode(null);
     setCallStatus("idle");
     if (id) {
-      try { await recordCall(id, duration); } catch (recordError) { setCallError(recordError instanceof Error ? recordError.message : "Unable to record the call."); }
+      try {
+        await updateDoc(doc(db, "calls", id), { status: "ended", endedAt: serverTimestamp() });
+        await recordCall(id, duration);
+      } catch (recordError) { setCallError(recordError instanceof Error ? recordError.message : "Unable to record the call."); }
       callId.current = "";
     }
   };
@@ -648,9 +652,13 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
     const incomingQuery = query(collection(db, "calls"), where("participantIds", "array-contains", user.uid), where("status", "==", "ringing"), limit(10));
     return onSnapshot(incomingQuery, (snapshot) => {
       const call = snapshot.docs.find((item) => item.data().callerId !== user.uid);
-      if (call) setIncomingCall({ id: call.id, conversationId: call.data().conversationId, mode: call.data().mode === "video" ? "video" : "voice", callerName: call.data().callerName ?? "CFAM member", callerPhotoUrl: call.data().callerPhotoUrl });
+      if (!call || callMode || callId.current) {
+        setIncomingCall(null);
+        return;
+      }
+      setIncomingCall({ id: call.id, conversationId: call.data().conversationId, mode: call.data().mode === "video" ? "video" : "voice", callerName: call.data().callerName ?? "CFAM member", callerPhotoUrl: call.data().callerPhotoUrl });
     });
-  }, [user.uid]);
+  }, [callMode, user.uid]);
 
   useEffect(() => () => stopCallMedia(), []);
 
