@@ -1152,11 +1152,13 @@ function AuthScreen({
     }
     const normalizedPhone = `${countryCode}${localPhone}`;
     await renderRecaptcha();
+    const verifier = recaptcha.current;
+    if (!verifier) throw new Error("Unable to load the reCAPTCHA. Refresh and try again.");
     const credential = auth.currentUser;
     if (!credential)
       throw new Error("Your signup session expired. Please start again.");
     const result = await Promise.race([
-      linkWithPhoneNumber(credential, normalizedPhone, recaptcha.current),
+      linkWithPhoneNumber(credential, normalizedPhone, verifier),
       new Promise<ConfirmationResult>((_, reject) =>
         window.setTimeout(
           () =>
