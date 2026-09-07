@@ -196,6 +196,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
   const candidateListener = useRef<(() => void) | null>(null);
   const localVideo = useRef<HTMLVideoElement>(null);
   const remoteVideo = useRef<HTMLVideoElement>(null);
+  const remoteAudio = useRef<HTMLAudioElement>(null);
 
   const activeConversation = conversations.find(
     (conversation) => conversation.id === activeId,
@@ -513,12 +514,14 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
     if (localVideo.current) localVideo.current.srcObject = stream;
     remoteStream.current = new MediaStream();
     if (remoteVideo.current) remoteVideo.current.srcObject = remoteStream.current;
+    if (remoteAudio.current) remoteAudio.current.srcObject = remoteStream.current;
     const connection = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
     peerConnection.current = connection;
     stream.getTracks().forEach((track) => connection.addTrack(track, stream));
     connection.ontrack = (event) => {
       event.streams[0]?.getTracks().forEach((track) => remoteStream.current?.addTrack(track));
       if (remoteVideo.current && remoteStream.current) remoteVideo.current.srcObject = remoteStream.current;
+      if (remoteAudio.current && remoteStream.current) remoteAudio.current.srcObject = remoteStream.current;
     };
     connection.onicecandidate = (event) => {
       if (event.candidate) void addDoc(collection(db, "calls", id, "candidates"), { senderId: user.uid, candidate: event.candidate.toJSON(), createdAt: serverTimestamp() });
@@ -617,6 +620,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
   useEffect(() => {
     if (localVideo.current && localStream.current) localVideo.current.srcObject = localStream.current;
     if (remoteVideo.current && remoteStream.current) remoteVideo.current.srcObject = remoteStream.current;
+    if (remoteAudio.current && remoteStream.current) remoteAudio.current.srcObject = remoteStream.current;
   }, [callMode, mediaReady]);
 
   return (
@@ -1120,6 +1124,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
       {callMode && activeConversation && (
         <div className="call-overlay">
           <div className="call-background">
+            <audio ref={remoteAudio} autoPlay />
             {callMode === "video" && <video ref={remoteVideo} className="call-remote-video" autoPlay playsInline />}
             <div className="call-topbar">
               <span className="call-secure">
