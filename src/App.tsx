@@ -1158,11 +1158,11 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
       {incomingCall && !callMode && (
         <div className="call-overlay">
           <div className="call-background">
-            <div className="call-person">
+            <div className="call-person incoming-call-person">
               <Avatar initials="CF" color="plum" size="large" photoUrl={incomingCall.callerPhotoUrl} />
               <h2>{incomingCall.callerName}</h2>
               <p>Incoming {incomingCall.mode === "video" ? "video" : "voice"} call</p>
-              <div className="call-controls">
+              <div className="call-controls incoming-call-controls">
                 <button className="end-call" onClick={() => { setIncomingCall(null); void updateDoc(doc(db, "calls", incomingCall.id), { status: "ended" }); }} aria-label="Decline call"><Phone size={22} /></button>
                 <button onClick={() => void acceptCall()} aria-label="Accept call"><Check size={21} /></button>
               </div>

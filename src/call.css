@@ -4,3 +4,7 @@
 .call-background audio{display:none}
 .call-participant-name{position:absolute;top:24px;left:50%;z-index:1;max-width:calc(100% - 150px);transform:translateX(-50%);padding:7px 12px;border:1px solid #ffffff24;border-radius:999px;background:#211a2488;color:#fff;font:700 12px Manrope;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .call-status{position:absolute;top:59px;left:50%;z-index:1;transform:translateX(-50%);color:#e5d7e6;font-size:10px;white-space:nowrap}
+.incoming-call-person{position:static}
+.incoming-call-controls{bottom:42px;left:50%;transform:translateX(-50%);gap:24px}
+.incoming-call-controls button{width:60px;height:60px}
+.incoming-call-controls .end-call{width:64px;height:64px}
