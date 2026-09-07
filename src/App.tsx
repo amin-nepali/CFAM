@@ -93,7 +93,6 @@ type UserProfile = {
   age: number;
   photoUrl?: string;
   emailVerified?: boolean;
-  phoneVerified?: boolean;
 };
 type Person = UserProfile & {
   id: string;
@@ -1096,88 +1095,50 @@ function AuthScreen({
   const [age, setAge] = useState("");
   const [countryCode, setCountryCode] = useState("+977");
   const [phone, setPhone] = useState("");
-  const [code, setCode] = useState("");
-  const [confirmation, setConfirmation] = useState<ConfirmationResult | null>(
-    null,
-  );
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const recaptcha = useRef<RecaptchaVerifier | null>(null);
-  const recaptchaRendered = useRef(false);
 
-  const resetRecaptcha = () => {
-    recaptcha.current?.clear();
-    recaptcha.current = null;
-    recaptchaRendered.current = false;
-  };
-
-  useEffect(() => () => resetRecaptcha(), []);
-
-      });
-    if (!recaptchaRendered.current) {
-        const credential =
-          auth.currentUser ??
-          (await createUserWithEmailAndPassword(auth, email, password));
-        const signedUpUser =
-          "user" in credential ? credential.user : credential;
-        if (verificationMethod === "sms") await createPhoneChallenge();
-        else {
-          const normalized = username.trim().toLowerCase();
-          await setDoc(doc(db, "users", signedUpUser.uid), {
-            username: normalized,
-            usernameLower: normalized,
-            firstName: firstName.trim(),
-            lastName: lastName.trim(),
-            age: Number(age),
-            phoneNumber: normalizedPhone,
-            emailVerified: false,
-            phoneVerified: false,
-            verificationMethod,
-            createdAt: serverTimestamp(),
-          });
-          await setDoc(doc(db, "usernames", normalized), {
-            uid: signedUpUser.uid,
-          });
-          await sendEmailVerification(signedUpUser);
-          await onSignupComplete();
-        }
-      } else if (!confirmation)
-        throw new Error("Request a verification code first.");
-      else {
-        const phoneCredential = await confirmation.confirm(code.trim());
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError("");
+    setBusy(true);
+    try {
+      if (mode === "login") {
+        await signInWithEmailAndPassword(auth, email, password);
+      } else {
+        if (!email.trim() || !phone.trim() || !password)
+          throw new Error("Email, phone number, and password are required.");
+        const localPhone = phone.replace(/\D/g, "");
+        if (!/^\d{10}$/.test(localPhone))
+          throw new Error("Enter the complete 10-digit mobile number.");
+        onSignupFlowChange(true);
+        const credential = await createUserWithEmailAndPassword(auth, email, password);
         const normalized = username.trim().toLowerCase();
-        await setDoc(doc(db, "users", phoneCredential.user.uid), {
+        await setDoc(doc(db, "users", credential.user.uid), {
           username: normalized,
           usernameLower: normalized,
           firstName: firstName.trim(),
           lastName: lastName.trim(),
           age: Number(age),
-          phoneNumber: phone.trim(),
+          phoneNumber: `${countryCode}${localPhone}`,
           emailVerified: false,
-          phoneVerified: true,
-          verificationMethod,
           createdAt: serverTimestamp(),
         });
-        await setDoc(doc(db, "usernames", normalized), {
-          uid: phoneCredential.user.uid,
-        });
+        await setDoc(doc(db, "usernames", normalized), { uid: credential.user.uid });
+        await sendEmailVerification(credential.user);
         await onSignupComplete();
       }
     } catch (submissionError) {
-      const message = submissionError instanceof Error
-        ? submissionError.message.replace("Firebase: ", "")
-        : "Unable to continue.";
-      setError(message.includes("auth/operation-not-allowed")
-        ? "Phone sign-in is not enabled in Firebase Authentication. Enable the Phone provider, then try again."
-        : message.includes("auth/quota-exceeded")
-          ? "Firebase SMS quota has been exceeded. Try again later or use email verification."
-          : message);
+      setError(
+        submissionError instanceof Error
+          ? submissionError.message.replace("Firebase: ", "")
+          : "Unable to continue.",
+      );
     } finally {
       setBusy(false);
     }
   };
-  const signupDetails = mode === "signup" && signupStep === "details";
-  const signupMode = mode === "signup";
+  const signupDetails = mode === "signup";
   return (
     <main className="auth-shell">
       <div className="auth-art">
@@ -1203,41 +1164,22 @@ function AuthScreen({
             ? "Welcome back"
             : signupDetails
               ? "Join the family"
-              : "Phone verification"}
+              : "Join the family"}
         </p>
         <h2>
           {mode === "login"
             ? "Sign in to CFAM"
             : signupDetails
               ? "Create your account"
-              : "Verify your phone"}
+              : "Create your account"}
         </h2>
         <p className="auth-subtitle">
           {mode === "login"
             ? "Your conversations are waiting for you."
             : signupDetails
-              ? "Enter both contact details, then choose how to verify."
-              : `Enter the code sent to ${phone}.`}
+              ? "Enter your contact details. We will send a verification link by email."
+              : "Your conversations are waiting for you."}
         </p>
-        {signupDetails && (
-          <div className="verification-choice">
-            <span>Verify with</span>
-            <button
-              type="button"
-              className={verificationMethod === "email" ? "selected" : ""}
-              onClick={() => setVerificationMethod("email")}
-            >
-              Email
-            </button>
-            <button
-              type="button"
-              className={verificationMethod === "sms" ? "selected" : ""}
-              onClick={() => setVerificationMethod("sms")}
-            >
-              SMS
-            </button>
-          </div>
-        )}
         {signupDetails && (
           <>
             <div className="form-grid">
@@ -1350,61 +1292,22 @@ function AuthScreen({
             </label>
           </>
         )}
-        {!signupDetails && mode === "signup" && (
-          <label>
-            SMS code
-            <input
-              required
-              inputMode="numeric"
-              pattern="[0-9]{6}"
-              value={code}
-              onChange={(event) => setCode(event.target.value)}
-              placeholder="123456"
-            />
-          </label>
-        )}
         {error && <p className="auth-error">{error}</p>}
-        {signupMode && signupDetails && verificationMethod === "sms" && (
-          <div id="phone-recaptcha" className="phone-recaptcha" />
-        )}
-        {
-          <button className="auth-submit" disabled={busy}>
-            {busy
-              ? "Please wait..."
-              : mode === "login"
-                ? "Sign in"
-                : signupDetails
-                  ? verificationMethod === "sms"
-                    ? "Send SMS code"
-                    : "Send email verification"
-                  : "Verify phone and continue"}{" "}
-            <ArrowLeft size={17} />
-          </button>
-        }
-        {mode === "signup" && !signupDetails && (
-          <button
-            type="button"
-            className="auth-secondary"
-            onClick={() => {
-              setSignupStep("details");
-              setConfirmation(null);
-              setError("");
-              resetRecaptcha();
-            }}
-          >
-            Change phone number
-          </button>
-        )}
+        <button className="auth-submit" disabled={busy}>
+          {busy
+            ? "Please wait..."
+            : mode === "login"
+              ? "Sign in"
+              : "Send email verification"}{" "}
+          <ArrowLeft size={17} />
+        </button>
         <p className="auth-switch">
           {mode === "login" ? "New to CFAM?" : "Already have an account?"}{" "}
           <button
             type="button"
             onClick={() => {
               setMode(mode === "login" ? "signup" : "login");
-              setSignupStep("details");
-              setConfirmation(null);
               setError("");
-              resetRecaptcha();
             }}
           >
             {mode === "login" ? "Create an account" : "Sign in"}
@@ -1694,7 +1597,7 @@ function App() {
         onSignupComplete={continueAfterSignup}
       />
     );
-  if (!user.emailVerified && !profile?.phoneVerified)
+  if (!user.emailVerified)
     return (
       <VerificationScreen user={user} onVerified={continueAfterVerification} />
     );

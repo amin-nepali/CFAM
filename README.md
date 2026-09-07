@@ -20,7 +20,7 @@ The current UI is a working front-end prototype. The Firebase client is prepared
 1. Create a Firebase project named `cfam-call-family` (or another globally available ID) at https://console.firebase.google.com.
 2. Add a Web app named `CFAM Web`.
 3. Enable **Authentication > Sign-in method > Email/Password**.
-4. Enable **Authentication > Sign-in method > Phone** and add the deployed domain under **Authentication > Settings > Authorized domains**. SMS verification will not send until both settings are enabled.
+4. Add the deployed domain under **Authentication > Settings > Authorized domains**.
 5. Enable **Authentication > Settings > Email enumeration protection**.
 6. In **Authentication > Templates**, set the verification email sender and authorized domain.
 7. Create a Firestore database in production mode.
