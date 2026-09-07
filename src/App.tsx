@@ -21,6 +21,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  runTransaction,
   updateDoc,
   where,
 } from "firebase/firestore";
@@ -53,6 +54,7 @@ import {
   X,
 } from "lucide-react";
 import "./App.css";
+import "./call.css";
 import "./auth.css";
 import "./mobile.css";
 import "./profile-image.css";
@@ -65,6 +67,7 @@ import { auth, db } from "./lib/firebase";
 
 type Conversation = {
   id: string;
+  memberIds: string[];
   name: string;
   handle: string;
   avatar: string;
@@ -84,6 +87,9 @@ type ChatMessage = {
   text: string;
   time: string;
   image?: string;
+  type?: "text" | "image" | "call";
+  callMode?: "voice" | "video";
+  durationSeconds?: number;
 };
 
 type UserProfile = {
@@ -156,6 +162,12 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [callMode, setCallMode] = useState<"voice" | "video" | null>(null);
+  const [callStatus, setCallStatus] = useState<"idle" | "calling" | "connected">("idle");
+  const [callError, setCallError] = useState("");
+  const [incomingCall, setIncomingCall] = useState<{ id: string; conversationId: string; mode: "voice" | "video"; callerName: string } | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [cameraOff, setCameraOff] = useState(false);
+  const [mediaReady, setMediaReady] = useState(0);
   const [showProfile, setShowProfile] = useState(false);
   const [showMobileNav, setShowMobileNav] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -175,6 +187,15 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
     }[]
   >([]);
   const imageInput = useRef<HTMLInputElement>(null);
+  const peerConnection = useRef<RTCPeerConnection | null>(null);
+  const localStream = useRef<MediaStream | null>(null);
+  const remoteStream = useRef<MediaStream | null>(null);
+  const callId = useRef("");
+  const callStartedAt = useRef<number | null>(null);
+  const callListener = useRef<(() => void) | null>(null);
+  const candidateListener = useRef<(() => void) | null>(null);
+  const localVideo = useRef<HTMLVideoElement>(null);
+  const remoteVideo = useRef<HTMLVideoElement>(null);
 
   const activeConversation = conversations.find(
     (conversation) => conversation.id === activeId,
@@ -250,6 +271,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
                 user.uid;
               return {
                 id: item.id,
+                memberIds: (data.memberIds as string[]) ?? [],
                 name: data.memberNames?.[otherId] ?? "Conversation",
                 handle: data.memberHandles?.[otherId] ?? "",
                 avatar: data.memberAvatars?.[otherId] ?? "?",
@@ -345,6 +367,9 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
               id: item.id,
               mine: data.senderId === user.uid,
               text: data.text ?? "",
+              type: data.type,
+              callMode: data.callMode,
+              durationSeconds: data.durationSeconds,
               time:
                 data.createdAt
                   ?.toDate?.()
@@ -418,6 +443,181 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
         : arrayUnion(user.uid),
     });
   };
+
+  const stopCallMedia = () => {
+    callListener.current?.();
+    candidateListener.current?.();
+    callListener.current = null;
+    candidateListener.current = null;
+    peerConnection.current?.close();
+    peerConnection.current = null;
+    localStream.current?.getTracks().forEach((track) => track.stop());
+    localStream.current = null;
+    remoteStream.current = null;
+    if (localVideo.current) localVideo.current.srcObject = null;
+    if (remoteVideo.current) remoteVideo.current.srcObject = null;
+  };
+
+  const recordCall = async (callDocumentId: string, duration: number) => {
+    const callReference = doc(db, "calls", callDocumentId);
+    let shouldRecord = false;
+    await runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(callReference);
+      if (snapshot.exists() && !snapshot.data().historyWritten) {
+        transaction.update(callReference, { historyWritten: true, status: "ended", endedAt: serverTimestamp() });
+        shouldRecord = true;
+      }
+    });
+    if (!shouldRecord) return;
+    const callData = (await getDoc(callReference)).data();
+    if (!callData?.conversationId) return;
+    const mode = callData.mode === "video" ? "video" : "voice";
+    const text = mode === "video" ? "Video call" : "Voice call";
+    await addDoc(collection(db, "conversations", callData.conversationId, "messages"), {
+      senderId: user.uid,
+      text,
+      type: "call",
+      callMode: mode,
+      durationSeconds: duration,
+      createdAt: serverTimestamp(),
+    });
+    await updateDoc(doc(db, "conversations", callData.conversationId), {
+      lastMessage: `${text} · ${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, "0")}`,
+      lastMessageAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  };
+
+  const listenForCallChanges = (id: string, caller: boolean) => {
+    callListener.current?.();
+    callListener.current = onSnapshot(doc(db, "calls", id), (snapshot) => {
+      const data = snapshot.data();
+      if (!data) return;
+      if (caller && data.answer && peerConnection.current?.signalingState === "have-local-offer") {
+        void peerConnection.current.setRemoteDescription(new RTCSessionDescription(data.answer));
+        setCallStatus("connected");
+        callStartedAt.current ??= Date.now();
+      }
+      if (data.status === "ended") {
+        stopCallMedia();
+        setCallMode(null);
+        setCallStatus("idle");
+      }
+    });
+  };
+
+  const createPeerConnection = async (id: string, mode: "voice" | "video") => {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: mode === "video" });
+    localStream.current = stream;
+    setMediaReady((current) => current + 1);
+    if (localVideo.current) localVideo.current.srcObject = stream;
+    remoteStream.current = new MediaStream();
+    if (remoteVideo.current) remoteVideo.current.srcObject = remoteStream.current;
+    const connection = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+    peerConnection.current = connection;
+    stream.getTracks().forEach((track) => connection.addTrack(track, stream));
+    connection.ontrack = (event) => {
+      event.streams[0]?.getTracks().forEach((track) => remoteStream.current?.addTrack(track));
+      if (remoteVideo.current && remoteStream.current) remoteVideo.current.srcObject = remoteStream.current;
+    };
+    connection.onicecandidate = (event) => {
+      if (event.candidate) void addDoc(collection(db, "calls", id, "candidates"), { senderId: user.uid, candidate: event.candidate.toJSON(), createdAt: serverTimestamp() });
+    };
+    candidateListener.current = onSnapshot(collection(db, "calls", id, "candidates"), (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        const data = change.doc.data();
+        if (change.type === "added" && data.senderId !== user.uid && data.candidate) void connection.addIceCandidate(new RTCIceCandidate(data.candidate));
+      });
+    });
+    connection.onconnectionstatechange = () => {
+      if (connection.connectionState === "connected") setCallStatus("connected");
+      if (["failed", "disconnected"].includes(connection.connectionState)) setCallError("The call connection was lost.");
+    };
+    return connection;
+  };
+
+  const startCall = async (mode: "voice" | "video") => {
+    if (!activeConversation) return;
+    setCallError("");
+    setCallMode(mode);
+    setCallStatus("calling");
+    callStartedAt.current = null;
+    try {
+      const callReference = doc(collection(db, "calls"));
+      callId.current = callReference.id;
+      const connection = await createPeerConnection(callReference.id, mode);
+      const offer = await connection.createOffer();
+      await connection.setLocalDescription(offer);
+      await setDoc(callReference, {
+        conversationId: activeConversation.id,
+        callerId: user.uid,
+        receiverId: activeConversation.memberIds.find((memberId) => memberId !== user.uid),
+        participantIds: activeConversation.memberIds,
+        callerName: `${profile.firstName} ${profile.lastName}`,
+        mode,
+        offer: { type: offer.type, sdp: offer.sdp },
+        status: "ringing",
+        historyWritten: false,
+        createdAt: serverTimestamp(),
+      });
+      listenForCallChanges(callReference.id, true);
+    } catch (callStartError) {
+      stopCallMedia();
+      setCallMode(null);
+      setCallStatus("idle");
+      setCallError(callStartError instanceof Error ? callStartError.message : "Unable to start the call.");
+    }
+  };
+
+  const acceptCall = async () => {
+    if (!incomingCall) return;
+    const callReference = doc(db, "calls", incomingCall.id);
+    try {
+      const snapshot = await getDoc(callReference);
+      const data = snapshot.data();
+      if (!data?.offer) return;
+      setCallMode(incomingCall.mode);
+      setActiveId(incomingCall.conversationId);
+      setCallStatus("connected");
+      callId.current = incomingCall.id;
+      callStartedAt.current = Date.now();
+      const connection = await createPeerConnection(incomingCall.id, incomingCall.mode);
+      await connection.setRemoteDescription(new RTCSessionDescription(data.offer));
+      const answer = await connection.createAnswer();
+      await connection.setLocalDescription(answer);
+      await updateDoc(callReference, { answer: { type: answer.type, sdp: answer.sdp }, status: "accepted" });
+      setIncomingCall(null);
+    } catch (callErrorValue) {
+      setCallError(callErrorValue instanceof Error ? callErrorValue.message : "Unable to accept the call.");
+    }
+  };
+
+  const endCall = async () => {
+    const id = callId.current;
+    const duration = callStartedAt.current ? Math.max(0, Math.round((Date.now() - callStartedAt.current) / 1000)) : 0;
+    stopCallMedia();
+    setCallMode(null);
+    setCallStatus("idle");
+    if (id) {
+      try { await recordCall(id, duration); } catch (recordError) { setCallError(recordError instanceof Error ? recordError.message : "Unable to record the call."); }
+      callId.current = "";
+    }
+  };
+
+  useEffect(() => {
+    const incomingQuery = query(collection(db, "calls"), where("participantIds", "array-contains", user.uid), where("status", "==", "ringing"), limit(10));
+    return onSnapshot(incomingQuery, (snapshot) => {
+      const call = snapshot.docs.find((item) => item.data().callerId !== user.uid);
+      if (call) setIncomingCall({ id: call.id, conversationId: call.data().conversationId, mode: call.data().mode === "video" ? "video" : "voice", callerName: call.data().callerName ?? "CFAM member" });
+    });
+  }, [user.uid]);
+
+  useEffect(() => () => stopCallMedia(), []);
+
+  useEffect(() => {
+    if (localVideo.current && localStream.current) localVideo.current.srcObject = localStream.current;
+    if (remoteVideo.current && remoteStream.current) remoteVideo.current.srcObject = remoteStream.current;
+  }, [callMode, mediaReady]);
 
   return (
     <main
@@ -737,14 +937,14 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
               <div className="chat-actions">
                 <button
                   className="icon-button"
-                  onClick={() => setCallMode("voice")}
+                  onClick={() => void startCall("voice")}
                   aria-label="Start voice call"
                 >
                   <Phone size={19} />
                 </button>
                 <button
                   className="icon-button"
-                  onClick={() => setCallMode("video")}
+                  onClick={() => void startCall("video")}
                   aria-label="Start video call"
                 >
                   <Video size={20} />
@@ -785,14 +985,21 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
                       />
                     )}
                     <div className="message-bubble">
-                      {item.image && (
+                      {item.type === "call" ? (
+                        <p>
+                          {item.text}
+                          {item.durationSeconds
+                            ? ` · ${Math.floor(item.durationSeconds / 60)}:${String(item.durationSeconds % 60).padStart(2, "0")}`
+                            : ""}
+                        </p>
+                      ) : item.image && (
                         <img
                           className="message-image"
                           src={item.image}
                           alt="Shared in chat"
                         />
                       )}{" "}
-                      {item.text && <p>{item.text}</p>}
+                      {item.type !== "call" && item.text && <p>{item.text}</p>}
                       <div className="message-time">
                         {item.time} {item.mine && <CheckCheck size={14} />}
                       </div>
@@ -879,11 +1086,11 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
             </span>
           </div>
           <div className="quick-actions">
-            <button onClick={() => setCallMode("voice")}>
+            <button onClick={() => void startCall("voice")}>
               <Phone size={18} />
               <span>Call</span>
             </button>
-            <button onClick={() => setCallMode("video")}>
+            <button onClick={() => void startCall("video")}>
               <Video size={18} />
               <span>Video</span>
             </button>
@@ -895,16 +1102,32 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
         </aside>
       )}
 
+      {incomingCall && !callMode && (
+        <div className="call-overlay">
+          <div className="call-background">
+            <div className="call-person">
+              <Avatar initials="CF" color="plum" size="large" />
+              <h2>{incomingCall.callerName}</h2>
+              <p>Incoming {incomingCall.mode === "video" ? "video" : "voice"} call</p>
+              <div className="call-controls">
+                <button className="end-call" onClick={() => { setIncomingCall(null); void updateDoc(doc(db, "calls", incomingCall.id), { status: "ended" }); }} aria-label="Decline call"><Phone size={22} /></button>
+                <button onClick={() => void acceptCall()} aria-label="Accept call"><Check size={21} /></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {callMode && activeConversation && (
         <div className="call-overlay">
           <div className="call-background">
+            {callMode === "video" && <video ref={remoteVideo} className="call-remote-video" autoPlay playsInline />}
             <div className="call-topbar">
               <span className="call-secure">
                 <Check size={15} /> Encrypted call
               </span>
               <button
                 className="call-close"
-                onClick={() => setCallMode(null)}
+                onClick={() => void endCall()}
                 aria-label="End call"
               >
                 <X size={20} />
@@ -917,32 +1140,26 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
                 size="large"
               />
               <h2>{activeConversation.name}</h2>
-              <p>
-                {callMode === "video" ? "Video calling" : "Calling"} ·
-                connecting...
-              </p>
+              <p>{callError || (callStatus === "connected" ? "Connected" : callStatus === "calling" ? "Calling..." : "Connecting...")}</p>
             </div>
-            <div className="call-local-video">
-              <Camera size={19} />
-              <span>You</span>
-            </div>
+            {callMode === "video" ? <div className="call-local-video"><video ref={localVideo} autoPlay muted playsInline /></div> : <div className="call-local-video"><Mic size={19} /><span>You</span></div>}
             <div className="call-controls">
-              <button aria-label="Mute microphone">
+              <button onClick={() => { localStream.current?.getAudioTracks().forEach((track) => { track.enabled = isMuted; }); setIsMuted((current) => !current); }} aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}>
                 <Mic size={21} />
               </button>
               {callMode === "video" && (
-                <button aria-label="Turn off camera">
+                <button onClick={() => { localStream.current?.getVideoTracks().forEach((track) => { track.enabled = cameraOff; }); setCameraOff((current) => !current); }} aria-label="Turn off camera">
                   <Video size={21} />
                 </button>
               )}
               <button
                 className="end-call"
-                onClick={() => setCallMode(null)}
+                onClick={() => void endCall()}
                 aria-label="End call"
               >
                 <Phone size={22} />
               </button>
-              <button aria-label="More call options">
+              <button aria-label="More call options" onClick={() => setCallError("Call is secured with peer-to-peer WebRTC audio and video.")}>
                 <MoreHorizontal size={22} />
               </button>
             </div>

@@ -2,11 +2,14 @@ package com.cfam.app;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
+import android.webkit.PermissionRequest;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -31,7 +34,15 @@ public class MainActivity extends Activity {
                 return false;
             }
         });
-        webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onPermissionRequest(final PermissionRequest request) {
+                runOnUiThread(() -> request.grant(new String[] {
+                        PermissionRequest.RESOURCE_AUDIO_CAPTURE,
+                        PermissionRequest.RESOURCE_VIDEO_CAPTURE
+                }));
+            }
+        });
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -46,6 +57,11 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
 
         setContentView(webView);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M
+                && (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
+                || checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)) {
+            requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA }, 42);
+        }
         if (savedInstanceState == null) {
             webView.loadUrl(CFAM_URL);
         } else {
