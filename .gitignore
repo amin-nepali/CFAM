@@ -10,6 +10,9 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+android/.gradle/
+android/app/build/
+android/local.properties
 *.local
 .env
 .env.*
