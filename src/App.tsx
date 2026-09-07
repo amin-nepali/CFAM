@@ -204,6 +204,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
   const localVideo = useRef<HTMLVideoElement>(null);
   const remoteVideo = useRef<HTMLVideoElement>(null);
   const remoteAudio = useRef<HTMLAudioElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const activeConversation = conversations.find(
     (conversation) => conversation.id === activeId,
@@ -412,6 +413,11 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
       window.removeEventListener("offline", updateOnline);
     };
   }, []);
+
+  useEffect(() => {
+    if (!activeId || !messages.length) return;
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [activeId, messages.length]);
 
   const sendMessage = () => {
     const trimmed = message.trim();
@@ -1042,6 +1048,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
                     </div>
                   </div>
                 ))}
+                <div ref={messagesEndRef} aria-hidden="true" />
               </div>
             </>
           )}
