@@ -51,6 +51,7 @@ public class MainActivity extends Activity {
         settings.setDatabaseEnabled(true);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
+        settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setSupportZoom(false);
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
@@ -58,10 +59,27 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
 
         setContentView(webView);
+        requestMediaPermissionsOnce();
         if (savedInstanceState == null) {
             webView.loadUrl(CFAM_URL);
         } else {
             webView.restoreState(savedInstanceState);
+        }
+    }
+
+    private void requestMediaPermissionsOnce() {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M) {
+            return;
+        }
+        List<String> requiredPermissions = new ArrayList<>();
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requiredPermissions.add(Manifest.permission.RECORD_AUDIO);
+        }
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requiredPermissions.add(Manifest.permission.CAMERA);
+        }
+        if (!requiredPermissions.isEmpty()) {
+            requestPermissions(requiredPermissions.toArray(new String[0]), MEDIA_PERMISSION_REQUEST);
         }
     }
 

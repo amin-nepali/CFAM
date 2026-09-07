@@ -564,7 +564,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
 
   const playRemoteVideo = () => {
     if (!remoteVideo.current || !remoteStream.current) return;
-    remoteVideo.current.srcObject = remoteStream.current;
+    if (!remoteVideo.current.srcObject) remoteVideo.current.srcObject = remoteStream.current;
     remoteVideo.current.muted = true;
     void remoteVideo.current.play().catch(() => undefined);
   };
@@ -630,10 +630,17 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
     peerConnection.current = connection;
     stream.getTracks().forEach((track) => connection.addTrack(track, stream));
     connection.ontrack = (event) => {
-      if (remoteStream.current && !remoteStream.current.getTracks().some((track) => track.id === event.track.id)) {
+      if (event.track.kind === "video") {
+        const videoStream = new MediaStream([event.track]);
+        if (remoteVideo.current) {
+          remoteVideo.current.srcObject = videoStream;
+          remoteVideo.current.muted = true;
+          remoteVideo.current.load();
+          void remoteVideo.current.play().catch(() => undefined);
+        }
+      } else if (remoteStream.current && !remoteStream.current.getTracks().some((track) => track.id === event.track.id)) {
         remoteStream.current.addTrack(event.track);
       }
-      playRemoteVideo();
       playRemoteAudio();
     };
     connection.onicecandidate = (event) => {
