@@ -23,6 +23,9 @@ The current UI is a working front-end prototype. The Firebase client is prepared
 4. Add the deployed domain under **Authentication > Settings > Authorized domains**.
 5. Enable **Authentication > Settings > Email enumeration protection**.
 6. In **Authentication > Templates**, set the verification email sender and authorized domain.
+  Set the verification email action text to **Verify your account**, use CFAM as the sender name,
+  and keep the action URL on the deployed CFAM domain. The app passes the deployed site as the
+  post-verification destination so users return to a familiar CFAM address after clicking.
 7. Create a Firestore database in production mode.
 8. Copy the web app configuration into a local `.env` file based on `.env.example`.
 9. Install and log in to the Firebase CLI:

@@ -68,6 +68,14 @@ import "./verification.css";
 import "./verification-choice.css";
 import { auth, db } from "./lib/firebase";
 
+const verificationActionCodeSettings = {
+  url: `${window.location.origin}/?verification=complete`,
+  handleCodeInApp: false,
+};
+
+const sendVerificationEmail = (user: User) =>
+  sendEmailVerification(user, verificationActionCodeSettings);
+
 type Conversation = {
   id: string;
   memberIds: string[];
@@ -1590,7 +1598,7 @@ function AuthScreen({
           createdAt: serverTimestamp(),
         });
         await setDoc(doc(db, "usernames", normalized), { uid: credential.user.uid });
-        await sendEmailVerification(credential.user);
+        await sendVerificationEmail(credential.user);
         await onSignupComplete();
       }
     } catch (submissionError) {
@@ -1763,7 +1771,7 @@ function AuthScreen({
             ? "Please wait..."
             : mode === "login"
               ? "Sign in"
-              : "Send email verification"}{" "}
+              : "Verify your account"}{" "}
           <ArrowLeft size={17} />
         </button>
         <p className="auth-switch">
@@ -1848,9 +1856,19 @@ function VerificationScreen({
         </button>
         <button
           className="auth-secondary"
-          onClick={() => {
-            void sendEmailVerification(user);
-            setSent(true);
+          disabled={sent}
+          onClick={async () => {
+            setError("");
+            try {
+              await sendVerificationEmail(user);
+              setSent(true);
+            } catch (resendError) {
+              setError(
+                resendError instanceof Error
+                  ? resendError.message.replace("Firebase: ", "")
+                  : "Unable to send the verification email.",
+              );
+            }
           }}
         >
           {sent ? "Verification email sent" : "Resend verification email"}
