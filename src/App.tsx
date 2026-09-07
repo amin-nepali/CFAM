@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { User } from 'firebase/auth'
 import { createUserWithEmailAndPassword, onAuthStateChanged, sendEmailVerification, signInWithEmailAndPassword, signOut } from 'firebase/auth'
 import type { FormEvent } from 'react'
-import { addDoc, collection, doc, getDoc, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore'
+import { addDoc, arrayRemove, arrayUnion, collection, doc, getDoc, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore'
 import {
   Archive,
   ArrowLeft,
@@ -37,6 +37,7 @@ import './mobile.css'
 import './profile-image.css'
 import './search.css'
 import './data-status.css'
+import './sections.css'
 import { auth, db } from './lib/firebase'
 
 type Conversation = {
@@ -50,6 +51,8 @@ type Conversation = {
   unread?: number
   online?: boolean
   kind?: 'group'
+  archivedBy?: string[]
+  updatedAt?: number
 }
 
 type ChatMessage = {
@@ -104,11 +107,17 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
   const [mobileChatOpen, setMobileChatOpen] = useState(false)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [dataError, setDataError] = useState('')
+  const [activeSection, setActiveSection] = useState<'messages' | 'notifications' | 'archived'>('messages')
+  const [notifications, setNotifications] = useState<{ id: string; text: string; createdAt?: { toDate?: () => Date }; read?: boolean }[]>([])
   const imageInput = useRef<HTMLInputElement>(null)
 
   const activeConversation = conversations.find((conversation) => conversation.id === activeId)
   const filteredPeople = useMemo(() => people.filter((person) => `${person.name} ${person.handle}`.toLowerCase().includes(search.toLowerCase())), [people, search])
-  const visibleConversations = useMemo(() => conversations.filter((conversation) => `${conversation.name} ${conversation.handle} ${conversation.lastMessage}`.toLowerCase().includes(search.toLowerCase())), [conversations, search])
+  const visibleConversations = useMemo(() => conversations.filter((conversation) => {
+    const archived = conversation.archivedBy?.includes(user.uid) ?? false
+    const matchesSearch = `${conversation.name} ${conversation.handle} ${conversation.lastMessage}`.toLowerCase().includes(search.toLowerCase())
+    return activeSection === 'archived' ? archived && matchesSearch : !archived && matchesSearch
+  }), [activeSection, conversations, search, user.uid])
 
   const openPerson = async (person: Person) => {
     const conversationId = [user.uid, person.id].sort().join('_')
@@ -126,16 +135,18 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
   }
 
   useEffect(() => {
-    const conversationQuery = query(collection(db, 'conversations'), where('memberIds', 'array-contains', user.uid), orderBy('updatedAt', 'desc'), limit(100))
+    const conversationQuery = query(collection(db, 'conversations'), where('memberIds', 'array-contains', user.uid), limit(100))
     return onSnapshot(conversationQuery, (snapshot) => {
       setDataError('')
       setConversations(snapshot.docs.map((item) => {
         const data = item.data()
         const otherId = (data.memberIds as string[]).find((id) => id !== user.uid) ?? user.uid
-        return { id: item.id, name: data.memberNames?.[otherId] ?? 'Conversation', handle: data.memberHandles?.[otherId] ?? '', avatar: data.memberAvatars?.[otherId] ?? '?', color: data.memberColors?.[otherId] ?? 'plum', lastMessage: data.lastMessage ?? 'Start a conversation', time: data.lastMessageAt?.toDate?.().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) ?? '', online: false }
-      }))
-    }, (error) => setDataError(error.code === 'failed-precondition' ? 'Your inbox index is still building.' : 'Unable to load your inbox right now.'))
+        return { id: item.id, name: data.memberNames?.[otherId] ?? 'Conversation', handle: data.memberHandles?.[otherId] ?? '', avatar: data.memberAvatars?.[otherId] ?? '?', color: data.memberColors?.[otherId] ?? 'plum', lastMessage: data.lastMessage ?? 'Start a conversation', time: data.lastMessageAt?.toDate?.().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) ?? '', online: false, archivedBy: data.archivedBy ?? [], updatedAt: data.updatedAt?.toMillis?.() ?? 0 }
+      }).sort((left, right) => right.updatedAt - left.updatedAt))
+    }, () => setDataError('Unable to load your inbox right now.'))
   }, [user.uid])
+
+  useEffect(() => onSnapshot(query(collection(db, 'notifications'), where('userId', '==', user.uid), limit(50)), (snapshot) => setNotifications(snapshot.docs.map((item) => ({ id: item.id, ...item.data() as { text: string; createdAt?: { toDate?: () => Date }; read?: boolean } }))), () => setDataError('Unable to load notifications right now.')), [user.uid])
 
   useEffect(() => onSnapshot(query(collection(db, 'users'), limit(100)), (snapshot) => setPeople(snapshot.docs.filter((item) => item.id !== user.uid).map((item) => {
     const data = item.data() as UserProfile
@@ -171,19 +182,23 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
     void updateDoc(doc(db, 'conversations', activeId), { lastMessage: 'Image', lastMessageAt: serverTimestamp(), updatedAt: serverTimestamp() })
   }
 
+  const archiveConversation = async (conversation: Conversation) => {
+    await updateDoc(doc(db, 'conversations', conversation.id), { archivedBy: conversation.archivedBy?.includes(user.uid) ? arrayRemove(user.uid) : arrayUnion(user.uid) })
+  }
+
   return (
     <main className={`app-shell ${sidebarCollapsed ? 'sidebar-is-collapsed' : ''} ${detailsOpen ? 'details-is-open' : ''} ${mobileChatOpen ? 'mobile-chat-open' : ''}`}>
       <aside className={`sidebar ${showMobileNav ? 'sidebar-open' : ''} ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
         <div className="brand-row"><div className="brand-mark">C</div><span>CFAM</span><button className="icon-button sidebar-toggle mobile-close" onClick={() => setShowMobileNav(false)} aria-label="Close menu"><X size={19} /></button><button className="icon-button sidebar-toggle desktop-toggle" onClick={() => setSidebarCollapsed((current) => !current)} aria-label="Collapse sidebar">{sidebarCollapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}</button></div>
         <div className="profile-mini" onClick={() => setShowProfile(true)} role="button" tabIndex={0}><Avatar initials={`${currentProfile.firstName[0]}${currentProfile.lastName[0]}`} color="plum" size="small" photoUrl={currentProfile.photoUrl} /><span><strong>{currentProfile.firstName} {currentProfile.lastName}</strong><small>@{currentProfile.username}</small></span><ChevronDown size={15} /></div>
-        <nav className="main-nav"><p className="nav-label">Workspace</p><button className="nav-item active"><UsersRound size={18} /> Messages <span className="nav-count">{conversations.length}</span></button><button className="nav-item"><Bell size={18} /> Notifications <span className="nav-dot" /></button><button className="nav-item"><Archive size={18} /> Archived</button><p className="nav-label nav-label-spaced">Manage</p><button className="nav-item"><Settings size={18} /> Settings</button><button className="nav-item"><CircleHelp size={18} /> Help center</button></nav>
+        <nav className="main-nav"><p className="nav-label">Workspace</p><button className={`nav-item ${activeSection === 'messages' ? 'active' : ''}`} onClick={() => setActiveSection('messages')}><UsersRound size={18} /> Messages <span className="nav-count">{conversations.filter((conversation) => !conversation.archivedBy?.includes(user.uid)).length}</span></button><button className={`nav-item ${activeSection === 'notifications' ? 'active' : ''}`} onClick={() => setActiveSection('notifications')}><Bell size={18} /> Notifications {notifications.some((notification) => !notification.read) && <span className="nav-dot" />}</button><button className={`nav-item ${activeSection === 'archived' ? 'active' : ''}`} onClick={() => setActiveSection('archived')}><Archive size={18} /> Archived <span className="nav-count">{conversations.filter((conversation) => conversation.archivedBy?.includes(user.uid)).length}</span></button><p className="nav-label nav-label-spaced">Manage</p><button className="nav-item"><Settings size={18} /> Settings</button><button className="nav-item"><CircleHelp size={18} /> Help center</button></nav>
         <div className="sidebar-bottom"><div className="plan-card"><div className="plan-top"><Sparkles size={15} /><span>Personal space</span></div><p>Make conversations feel more like you.</p><button onClick={() => setShowProfile(true)}>Edit your profile <ArrowLeft size={15} /></button></div><button className="logout-button" onClick={() => void signOut(auth)}><LogOut size={17} /> Sign out</button><small className="version">CFAM v1.0 · Call family</small></div>
       </aside>
 
       <section className="conversation-panel">
-        <header className="panel-header"><button className="icon-button mobile-menu" onClick={() => setShowMobileNav(true)} aria-label="Open menu"><Menu size={21} /></button><div><p className="eyebrow">Your inbox</p><h1>Messages</h1></div><button className="new-message" aria-label="Start a new message">+ <span>New message</span></button></header>
+        <header className="panel-header"><button className="icon-button mobile-menu" onClick={() => setShowMobileNav(true)} aria-label="Open menu"><Menu size={21} /></button><div><p className="eyebrow">Your inbox</p><h1>{activeSection === 'notifications' ? 'Notifications' : activeSection === 'archived' ? 'Archived' : 'Messages'}</h1></div>{activeSection === 'messages' && <button className="new-message" aria-label="Start a new message">+ <span>New message</span></button>}</header>
         <div className="conversation-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search conversations or people" aria-label="Search conversations or people" /><button className="search-clear" onClick={() => setSearch('')} aria-label="Clear search"><X size={16} /></button></div>
-        <div className="conversation-list">{dataError && <p className="data-error">{dataError}</p>}<div className="list-title"><span>{search ? 'Search results' : 'Recent · live'}</span><button className="filter-button">All <ChevronDown size={14} /></button></div>{visibleConversations.map((conversation) => <button className={`conversation-row ${activeId === conversation.id ? 'selected' : ''}`} key={conversation.id} onClick={() => { setActiveId(conversation.id); setMobileChatOpen(true); setShowMobileNav(false) }}><Avatar initials={conversation.avatar} color={conversation.color} /><span className="conversation-copy"><strong>{conversation.name}</strong><small>{conversation.lastMessage}</small></span><span className="conversation-meta"><small>{conversation.time}</small>{conversation.unread && <b>{conversation.unread}</b>}</span>{conversation.online && <span className="online-dot" />}</button>)}{search && filteredPeople.length > 0 && <div className="inline-people"><p className="inline-results-label">People</p>{filteredPeople.map((person) => <button key={person.handle} className="person-result" onClick={() => { void openPerson(person) }}><Avatar initials={person.avatar} color={person.color} size="small" /><span><strong>{person.name}</strong><small>{person.handle} · {person.meta}</small></span><ArrowLeft size={16} /></button>)}</div>}{search && visibleConversations.length === 0 && filteredPeople.length === 0 && <p className="empty-search">No conversations or people found for “{search}”.</p>}</div>
+        <div className="conversation-list">{dataError && <p className="data-error">{dataError}</p>}{activeSection === 'notifications' ? <div className="notification-list">{notifications.length === 0 ? <p className="empty-search">No notifications yet.</p> : notifications.map((notification) => <div className={`notification-row ${notification.read ? '' : 'unread'}`} key={notification.id}><Bell size={16} /><span><strong>{notification.text}</strong><small>{notification.createdAt?.toDate?.()?.toLocaleString() ?? 'Just now'}</small></span></div>)}</div> : <><div className="list-title"><span>{activeSection === 'archived' ? 'Archived conversations' : search ? 'Search results' : 'Recent · live'}</span><button className="filter-button">All <ChevronDown size={14} /></button></div>{visibleConversations.map((conversation) => <div className="conversation-entry" key={conversation.id}><button className={`conversation-row ${activeId === conversation.id ? 'selected' : ''}`} onClick={() => { setActiveId(conversation.id); setMobileChatOpen(true); setShowMobileNav(false) }}><Avatar initials={conversation.avatar} color={conversation.color} /><span className="conversation-copy"><strong>{conversation.name}</strong><small>{conversation.lastMessage}</small></span><span className="conversation-meta"><small>{conversation.time}</small></span></button><button className="archive-action" onClick={() => void archiveConversation(conversation)} aria-label={activeSection === 'archived' ? 'Restore conversation' : 'Archive conversation'}>{activeSection === 'archived' ? 'Restore' : 'Archive'}</button></div>)}{activeSection === 'messages' && search && filteredPeople.length > 0 && <div className="inline-people"><p className="inline-results-label">People</p>{filteredPeople.map((person) => <button key={person.handle} className="person-result" onClick={() => { void openPerson(person) }}><Avatar initials={person.avatar} color={person.color} size="small" /><span><strong>{person.name}</strong><small>{person.handle} · {person.meta}</small></span><ArrowLeft size={16} /></button>)}</div>}{search && visibleConversations.length === 0 && filteredPeople.length === 0 && <p className="empty-search">No conversations or people found for “{search}”.</p>}</>}</div>
         <div className="discover-card"><div className="discover-icon"><Search size={18} /></div><div><strong>Find your people</strong><p>Search by username to start a new conversation.</p></div><ArrowLeft size={17} className="discover-arrow" /></div>
       </section>
 
