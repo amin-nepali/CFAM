@@ -1,0 +1,7 @@
+:root { font-family: 'DM Sans', 'Segoe UI', sans-serif; color: #27252b; background: #f6f5f1; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+
+#root { min-height: 100svh; }
+
+body { margin: 0; }
+button, input { font: inherit; }
+button { cursor: pointer; }
