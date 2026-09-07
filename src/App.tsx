@@ -185,6 +185,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
   const [mediaReady, setMediaReady] = useState(0);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [showProfile, setShowProfile] = useState(false);
+  const [showContactProfile, setShowContactProfile] = useState(false);
   const [showMobileNav, setShowMobileNav] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -1272,7 +1273,7 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
               <Video size={18} />
               <span>Video</span>
             </button>
-            <button onClick={() => setShowProfile(true)}>
+            <button onClick={() => setShowContactProfile(true)}>
               <UserRound size={18} />
               <span>Profile</span>
             </button>
@@ -1358,6 +1359,12 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
           }}
         />
       )}
+      {showContactProfile && activeConversation && (
+        <ContactProfileModal
+          conversation={activeConversation}
+          onClose={() => setShowContactProfile(false)}
+        />
+      )}
       {previewImage && (
         <div className="image-preview-backdrop" onClick={() => setPreviewImage(null)} role="dialog" aria-label="Image preview">
           <button className="image-preview-close" onClick={() => setPreviewImage(null)} aria-label="Close image preview"><X size={22} /></button>
@@ -1365,6 +1372,48 @@ function Workspace({ user, profile }: { user: User; profile: UserProfile }) {
         </div>
       )}
     </main>
+  );
+}
+
+function ContactProfileModal({
+  conversation,
+  onClose,
+}: {
+  conversation: Conversation;
+  onClose: () => void;
+}) {
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="profile-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-heading">
+          <div>
+            <p className="eyebrow">Contact profile</p>
+            <h2>{conversation.name}</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="Close contact profile">
+            <X size={19} />
+          </button>
+        </div>
+        <div className="profile-upload">
+          <div className="profile-photo">
+            <Avatar
+              initials={conversation.avatar}
+              color={conversation.color}
+              size="large"
+              photoUrl={conversation.photoUrl}
+            />
+          </div>
+          <div>
+            <strong>{conversation.handle || "CFAM member"}</strong>
+            <p>{conversation.lastMessage || "Connected on CFAM"}</p>
+          </div>
+        </div>
+        <div className="profile-details">
+          <span>Username</span>
+          <strong>{conversation.handle || "Not available"}</strong>
+        </div>
+      </div>
+    </div>
   );
 }
 
