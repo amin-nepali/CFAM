@@ -1,0 +1,203 @@
+
+
+FUNDAMENTAL OF CURRICULUM (ED 442)
+Exam-Oriented Revision Notes and Extended Answers
+
+Prepared for quick revision before examination.
+
+Unit 1: Introduction to Curriculum
+1. Definitions and Perspectives of Curriculum
+
+The term curriculum is derived from the Latin word currere, which means "a runway" or "a course to run." In education, it refers to the planned path or sequence through which learners move toward educational goals. It is not only a list of subjects; it is the total process of teaching and learning that includes aims, content, experiences, methods, and evaluation.
+
+Curriculum as Subject Matter:
+This is the traditional and subject-centered view. Curriculum is seen as a body of knowledge made up of academic subjects such as mathematics, science, language, history, and social studies. The focus is on intellectual discipline and mastery of content. Teacher-centered methods dominate, and students are expected to master the required subjects.
+
+Curriculum as Experiences:
+This perspective, strongly supported by John Dewey, emphasizes learning through guided experiences. Curriculum includes classroom interaction, discussions, projects, field visits, laboratory work, social activities, and practical learning. Education is seen as the total development of the learner—intellectual, social, moral, and physical.
+
+Curriculum as Objectives:
+Ralph Tyler and Benjamin Bloom emphasized that curriculum should be based on intended learning outcomes. Content and teaching methods are selected to achieve these outcomes. Objectives make learning measurable and allow teachers to evaluate whether students have acquired knowledge, understanding, skills, and attitudes.
+
+Curriculum as a Plan of Learning:
+This view perceives curriculum as a blueprint for education. It includes educational aims, specific goals, content selection, organization, teaching strategies, time allocation, and evaluation procedures. Hilda Taba and Saylor and Alexander contributed to this idea, emphasizing systematic design and coordination of learning.
+
+Conclusion:
+Curriculum is broader than a syllabus. It includes knowledge, experiences, objectives, and planned learning processes. A balanced curriculum should integrate academic learning, social values, and practical experiences.
+
+2. Distinction Between Syllabus and Course of Study
+
+Syllabus:
+A syllabus is a brief summary of the topics, units, and headings to be covered in a subject for a given class or term. It is usually short and includes only the content outline.
+
+Course of Study:
+A course of study is a more comprehensive plan. It contains the educational objectives, units, time allocation, teaching methods, teaching materials, and evaluation techniques. It is the operational guide for classroom teaching.
+
+Difference:
+Syllabus answers what is to be taught, while course of study explains what, how, when, and how to evaluate it. The syllabus is narrow and descriptive; the course of study is detailed and functional.
+
+Unit 2: Bases for Curricular Decisions
+1. Philosophical Bases of Curriculum
+
+Philosophy is the foundation of curriculum because it determines the aims of education, the content to be selected, and the methods of teaching.
+
+Idealism (Plato, Immanuel Kant):
+Idealism says reality is spiritual, mental, and unchanging. It values truth, beauty, morality, and eternal intellectual ideals. The curriculum is mainly subject-centered and emphasizes literature, history, ethics, philosophy, and humanities. Teaching methods include lecture, discussion, moral instruction, and Socratic questioning. The teacher acts as a moral role model.
+
+Naturalism (Jean-Jacques Rousseau):
+Naturalism regards nature as the ultimate source of reality and values the child’s natural development. It rejects rigid and artificial schooling. The curriculum is child-centered and includes play, sensory experiences, nature study, physical activities, and self-directed learning. The teacher acts as a guide and observer.
+
+Pragmatism (John Dewey):
+Pragmatism believes reality is dynamic and learning should be based on experience. Truth is judged by practical usefulness. The curriculum should be problem-centered and integrated with real life, social issues, and vocational skills. Project work, democratic participation, problem solving, and group activities are important methods.
+
+Realism (Aristotle):
+Realism believes that the physical world exists independently and can be known through observation and reasoning. It emphasizes science, mathematics, factual knowledge, and experimentation. The teacher functions as an expert and the curriculum is structured, objective, and evidence-based.
+
+2. Socio-Cultural Bases
+
+Curriculum is shaped by the values, culture, and needs of society. It helps preserve culture and also prepare students for social change and modernization.
+
+Cultural Diversity and Inclusivity:
+The curriculum should reflect the multi-ethnic, multilingual, and multi-religious nature of society. It should ensure equal opportunity and participation for all social groups.
+
+Social Change and Modernization:
+Education must respond to technological advancement, urbanization, economic development, and democratic values. The curriculum must include contemporary issues and future-oriented learning.
+
+Social Problems and Needs:
+The curriculum should address problems like poverty, gender inequality, pollution, climate change, health issues, and social injustice. It should develop responsible citizens who contribute to society.
+
+3. Nature of Knowledge
+
+Knowledge is central to curriculum. However, education is not only about memorizing facts; it also includes understanding and application.
+
+Knowledge as Content vs. Process:
+Content refers to facts, information, concepts, and theories. Process refers to inquiry, analysis, thinking, problem solving, and reflection. Education must balance both knowledge and the ability to use it.
+
+Levels of Content:
+Data/Facts: isolated information
+Concepts: generalized ideas formed from facts
+Principles/Generalizations: relationships among concepts
+Theories: systematic explanations of phenomena
+
+Knowledge Explosion and Obsolescence:
+Because knowledge grows rapidly, not all facts can be memorized. Education must focus on core concepts, essential principles, and lifelong learning skills rather than rote learning.
+
+4. Nature of the Learner
+
+Curriculum should be based on the developmental needs of children.
+
+Child Growth and Development:
+Children develop physically, socially, emotionally, and cognitively at different stages. Teachers must sequence content according to the learner’s readiness and maturity level.
+
+Special Needs and Inclusive Education:
+Students differ in ability, interest, and learning style. A good curriculum includes differentiated instruction, flexible learning, and inclusive practices so that all children can learn meaningfully.
+
+Unit 3: Curricular Components
+1. Aims, Goals, and Objectives
+
+Educational Aims:
+These are broad, long-term national statements that reflect the aims of society and education. Example: “To develop responsible and democratic citizens.”
+
+Educational Goals:
+These are level-specific or subject-specific outcomes expected at a stage of education. Example: “To develop basic numerical literacy in primary education.”
+
+Instructional Objectives:
+These are specific, short-term outcomes after a lesson or unit. They are measurable and describe what students should be able to do.
+
+2. Domains of Educational Objectives (Bloom’s Taxonomy)
+
+Cognitive Domain:
+This includes remembering, understanding, applying, analyzing, evaluating, and creating.
+
+Affective Domain:
+This is concerned with attitudes, values, and feelings. Levels include receiving, responding, valuing, organizing, and characterization by value.
+
+Psychomotor Domain:
+This includes physical skills and movements. It starts from simple reflexes and moves toward skilled and coordinated actions.
+
+3. Content Selection Criteria & Principles of Organization
+
+Criteria for Selection:
+Validity: content must be accurate and authentic.
+Significance: content should be important and relevant.
+Utility: content should be useful in life and work.
+Learnability: content should match the learner’s capacity.
+Interest: content should motivate and engage students.
+
+Principles of Organization:
+Scope: breadth and depth of content
+Sequence: logical and developmental arrangement
+Integration: connection across subjects
+Articulation: continuity across grade levels
+Continuity: repetition and reinforcement of key concepts
+
+4. Assessment and Evaluation
+
+Formative Assessment:
+Assessment for learning occurs during instruction. It includes quizzes, observation, classroom discussion, homework, and projects. It helps improve learning while teaching continues.
+
+Summative Assessment:
+Assessment of learning occurs at the end of a term or year. It includes final examinations and standardized tests. It measures total achievement and helps grade students.
+
+Unit 4: Curriculum Development Process
+1. General Steps in Curriculum Development
+
+Needs Assessment: identify the needs of learners and society.
+Formulation of Objectives: state educational aims and learning outcomes.
+Selection of Content: choose relevant knowledge and skills.
+Organization of Content: arrange content logically.
+Selection of Learning Experiences: decide the methods and activities.
+Organization of Learning Experiences: sequence activities for effective learning.
+Evaluation and Revision: assess the effectiveness and improve the curriculum.
+
+2. Curriculum Development Process in Nepal
+
+The curriculum in Nepal is developed by the Curriculum Development Centre (CDC), which works under the Ministry of Education, Science and Technology. The process includes policy alignment, needs analysis, drafting, expert review, piloting, approval, dissemination, and evaluation.
+
+Policy Alignment: The National Curriculum Framework (NCF 2076) guides all school curriculum decisions.
+Needs Analysis: Research and field surveys help identify needs.
+Drafting: Experts prepare the curriculum structure and subject content.
+Expert Review: Specialists review quality and relevance.
+Piloting: The draft is tested in selected schools.
+Approval: The National Curriculum Council finalizes it.
+Dissemination: Textbooks, teacher orientation, and implementation follow.
+Evaluation: Periodic revision improves quality and relevance.
+
+Unit 5: Existing School Curriculum of Nepal
+1. Level-Wise Goals in Nepal
+
+Early Childhood Development and Education (ECED): focuses on holistic development of the child, including physical, emotional, social, cognitive, and language growth.
+
+Basic Level (Grades 1–8): emphasizes literacy, numeracy, life skills, moral values, social awareness, and local knowledge.
+
+Secondary Level (Grades 9–12): focuses on specialization, critical thinking, vocational competence, and preparation for higher education or the workforce.
+
+2. Salient Features of National Curriculum Framework (NCF 2076)
+
+Integrated Curriculum: used in Grades 1–3.
+Local Curriculum: includes local language, culture, and community knowledge.
+Credit Hour System: one credit hour equals 32 working hours.
+Letter Grading and CAS: the system uses continuous assessment and grade-based evaluation.
+
+3. Standard Subject Curriculum Components
+
+A standard curriculum document in Nepal contains six main sections:
+Introduction and Rationale
+Level-wise Competencies
+Grade-wise Learning Outcomes
+Scope and Sequence Table
+Learning Facilitation Process
+Student Assessment Scheme
+
+General Conclusion:
+Curriculum is the backbone of education. It determines what students learn, how they learn, and how their learning is assessed. A good curriculum is learner-centered, culturally relevant, inclusive, socially responsive, and aligned with national goals. In Nepal, curriculum development aims to produce knowledgeable, skilled, and responsible citizens.
+
+Exam Tips:
+- Define curriculum and explain its different perspectives.
+- Distinguish between syllabus and course of study.
+- Compare idealism, naturalism, pragmatism, and realism.
+- Explain the basis of curriculum in society and knowledge.
+- Describe the curriculum development process in Nepal.
+- Mention the salient features of NCF 2076.
+
+
