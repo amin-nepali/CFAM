@@ -6,6 +6,9 @@ CFAM means **Call Family**: a serverless communication app for private chats, im
 
 - **Project name:** CFAM
 - **Package name:** `cfam`
+
+- giddi hau yo project ta xyaa
+- 
 - **Stack:** React + TypeScript + Vite
 - **Authentication:** Firebase Authentication with email/password and email verification
 - **History:** Cloud Firestore realtime listeners for profiles, conversations, messages, and presence
